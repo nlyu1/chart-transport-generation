@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import torch
 from jaxtyping import Float
@@ -11,6 +11,10 @@ from torch import Tensor
 from src.config.base import BaseConfig
 from src.method.base import MethodConfig
 from src.model.base import ModelConfig
+
+if TYPE_CHECKING:
+    from src.method.latent_generation.model import LatentGenerationModel
+    from src.method.latent_generation.state import LatentGenerationState
 
 
 class LatentNoiseWeightConfig(BaseConfig, ABC):
@@ -85,10 +89,9 @@ class LatentGenerationLossConfig(BaseConfig):
 class LatentGenerationModelConfig(ModelConfig):
     encoder_config: ModelConfig
     decoder_config: ModelConfig
-    data_shape: tuple[int, ...]
     latent_shape: tuple[int, ...]
 
-    def get_model(self):
+    def get_model(self) -> "LatentGenerationModel":
         from src.method.latent_generation.model import LatentGenerationModel
 
         return LatentGenerationModel(config=self)
@@ -102,7 +105,7 @@ class LatentGenerationMethodConfig(MethodConfig):
     def get_model_config(self) -> LatentGenerationModelConfig:
         return self.model
 
-    def initialize_state(self):
+    def initialize_state(self) -> "LatentGenerationState":
         from src.method.latent_generation.state import LatentGenerationState
 
         return LatentGenerationState(

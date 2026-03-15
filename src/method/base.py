@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 import torch.nn as nn
 from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 
 from src.config.base import BaseConfig
+from src.data.base import GenerativeBatch
 from src.model.base import ModelConfig
 
 
@@ -26,7 +26,7 @@ class MethodState(BaseModel, ABC):
         self,
         *,
         model: nn.Module,
-        batch: Any,
+        batch: GenerativeBatch,
     ) -> MethodStepOutput:
         raise NotImplementedError
 

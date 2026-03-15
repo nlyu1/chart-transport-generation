@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from pydantic import ConfigDict
 from torch import Tensor
 
-from src.data.base import GenerativeBatch, GenerativeData
+from src.data.base import GenerativeBatch
 from src.method.base import MethodState, MethodStepOutput
 from src.method.latent_generation.config import LatentGenerationLossConfig
 from src.method.latent_generation.model import LatentGenerationModel
@@ -47,28 +47,22 @@ class LatentGenerationState(MethodState):
         self,
         *,
         model: LatentGenerationModel,
-        batch: GenerativeBatch[GenerativeData],
+        batch: GenerativeBatch,
     ) -> LatentGenerationStepOutput:
-        x = batch.data().x
+        x = batch.data()
         batch_size = int(x.shape[0])
-        zeros = torch.zeros(
-            batch_size,
-            1,
-            device=x.device,
-            dtype=x.dtype,
-        )
 
-        y_data = model.encode_plain(x=x)
+        y_data = model.encode(x=x)
         y_data_target = y_data.detach()
         x_recon = model.decode(y=y_data)
 
-        y_cycle_data = model.roundtrip(y=y_data_target, t=zeros)
+        y_cycle_data = model.roundtrip(y=y_data_target)
         z = self.draw_prior_latents(
             batch_size=batch_size,
             device=x.device,
             dtype=x.dtype,
         )
-        z_cycle = model.roundtrip(y=z, t=zeros)
+        z_cycle = model.roundtrip(y=z)
 
         t = self.loss_config.sample_time(
             batch_size=batch_size,
@@ -84,13 +78,21 @@ class LatentGenerationState(MethodState):
         )
         y_denoised = model.roundtrip(y=y_t, t=t)
 
-        y_roundtrip = model.roundtrip(y=y_data_target, t=zeros)
+        x_roundtrip = model.decode(y=y_data_target)
+        y_roundtrip = model.encode(
+            x=x_roundtrip,
+            apply_as_frozen=True,
+        )
         eps_score = torch.randn_like(y_roundtrip)
         y_roundtrip_t = apply_batch_scalars(y_roundtrip, 1.0 - t) + apply_batch_scalars(
             eps_score,
             t,
         )
-        y_score = model.roundtrip(y=y_roundtrip_t, t=t)
+        y_score = model.roundtrip(
+            y=y_roundtrip_t,
+            t=t,
+            apply_as_frozen=True,
+        )
         y_score_target = gaussian_posterior_mean(
             y_t=y_roundtrip_t.detach(),
             t=t,
