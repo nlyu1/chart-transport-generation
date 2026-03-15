@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffusive-latent-drifting"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "diffusers>=0.37.0",
+    "einops>=0.8,<0.9",
+    "jaxtyping>=0.3,<0.4",
+    "lightning>=2.6,<2.7",
+    "matplotlib>=3.10.8,<3.11.0",
+    "numpy>=2.4.3,<2.5.0",
+    "pandas>=3.0.1,<3.1.0",
+    "pydantic>=2.12.0,<2.13.0",
+    "scipy>=1.17.1,<1.18.0",
+    "torch>=2.9,<2.10",
+    "torchaudio>=2.9,<2.10",
+    "torchvision>=0.24,<0.25",
+    "tqdm>=4.67.3,<4.68.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchaudio = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.6",
+]
+
+[tool.ruff.lint]
+per-file-ignores = {"**/*.py" = ["F821", "F722"]}
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -6,7 +6,7 @@
 )
 
 = Drifting research proposal
-Nicholas (Xingjian) Lyu. Mar 8, 2026
+Nicholas (Xingjian) Lyu. Mar 15, 2026
 \
 
 *TLDR*: we propose a latent drifting protocol which #blue[_sidesteps density estimation variance in high-dimensions_] and #blue[_performs score matching_] under the correct data measure #footnote[Score matching under the model distribution minimizes the mode-seeking #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#ex-otto-reverse-kl")[reverse KL], instead of the proper MLE objective.]. The protocol admits a clean MLE interpretation.
@@ -26,7 +26,7 @@ We have shown in #link("https://snakamoto404.github.io/blogs/machine-learning/ot
 
 I did #link("http://localhost:4321/blogs/machine-learning/ot-generative-3-diffusion/")[some learning on diffusion / flow-matching] to see how these problems are addressed in the FM paradigm. The main takeaways are:
 
-1. _Reduce density (score) estimation to regression_: #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#thm-tweedie")[Tweedie's formula] reduces score estimation into denoising #footnote[$x \| z tilde.op cal(N)(alpha z, Sigma)$]. The difficulty of parametric regression scales with data size and the structural (manifold) dimension of the problem instead of the data dimension.
+1. _Reduce density (score) estimation to regression_: #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#thm-tweedie")[Tweedie's formula] reduces score estimation to denoising #footnote[$x \| z tilde.op cal(N)(alpha z, Sigma)$]. The difficulty of parametric regression scales with data size and the structural (manifold) dimension of the problem instead of the data dimension.
 $
   alpha EE[z \| x] = x + sigma^2 nabla log rho
 $
@@ -34,7 +34,7 @@ $
 
 == High-level proposal
 
-Our proposal is motivated to apply the escape hatches above to drifting with MLE in mind. From first principles, solving the reverse-KL sampling problem properly #footnote[we could consider importance sampling, but it introduces high variance and dependence upon explicit density estimation of $rho_"model" slash rho_"data"$.] requires us to know _what latent would have generated a data sample_; this calls for an inverse $f_phi$ to the generator $g_theta$. We naturally propose an encoder-decoder architecture with equal dimensions
+Our proposal is motivated by apply the escape hatches above to drifting with MLE in mind. From first principles, properly #footnote[we could consider importance sampling, but it introduces high variance and dependence upon explicit density estimation of $rho_"model" slash rho_"data"$.] solving the reverse-KL sampling problem requires us to know _what latent would have generated a data sample_; this calls for an inverse $f_phi$ to the generator $g_theta$. We naturally propose an encoder-decoder architecture
 $
   "latent" stretch(harpoons.rtlb)^(g_theta)_(f_phi) "model sample", quad g_theta compose f_phi = f_phi compose g_theta = "Id  on relevant supports"
 $
@@ -42,26 +42,27 @@ We know that the final data latent we target the is initial noise $nu = cal(N)(0
 $
   "latent" nu arrow.r^(g_theta) "sample" rho^- arrow.r^(f_phi) sigma^-, quad "true data" rho^+ arrow.r^(f_phi) sigma^+
 $
-To score-match the data $sigma^+$ and model $sigma^-$ latents, we also define the noised latents $sigma^plus.minus_t$ which linearly interpolates to i.i.d. Gaussian with $t in [0, 1]$. such that (using intuitive expressions):
+We know that $f_phi compose g_theta = "Id" ==> sigma^- approx nu$, we define the noised data latents $sigma^+_t$ which linearly interpolates to i.i.d. Gaussian with $t in [0, 1]$. such that (using intuitive expressions):
 $
   sigma^plus.minus_t = (1-t) sigma^plus.minus + t cal(N)(0, I)
 $
-This is the canonical noise process in flow matching.
+This is the canonical noise process in flow matching. Since $sigma^- approx nu =cal(N)(0, I)$ the noised distributions are analytic $sigma^-_t = cal(N)(0, (t^2 + overline(t)^2) I)$
 
-Tweedie reduces score estimation to estimating the denoised latent $EE_plus.minus [y_0 \| y_t]$. *We parameterize the latent denoiser $(y_t, t, plus.minus) mapsto EE_(plus.minus) [y_0 \| y_t]$ by a round-trip*
+Tweedie reduces score estimation to estimating the denoised data latent $EE_plus [y_0 \| y_t]$. *We parameterize the latent data-denoiser $(y_t, t) mapsto EE_+ [y_0 \| y_t]$ by a round-trip*
 $
-  (f_phi^(plus.minus t) compose g_theta)(y_t) approx EE_plus.minus [y_0 \| y_t]
+  (f_phi^t compose g_theta)(y_t) approx EE_plus [y_0 \| y_t]
 $
-The encoder $f_phi^(plus.minus t)$ now accepts additional parameterization; #blue[we continue to denote $f_phi = f_phi^(plus.minus 0)$]. Note that the denoising objective at $t=0$ coincides with $f_phi compose g_theta = "Id"$ continuously. We need $plus.minus 0$ parameterizations to coincide for reasons elaborated in the theory section.
+Note that score-matching in latent space with $f_phi compose g_theta = "Id"$ have bought us a free, analytic model latent distribution (i.i.d. Gaussian), so we only need to learn the data latents.
+The encoder $f_phi^(t)$ now accepts additional parameterization; #blue[we continue to denote $f_phi = f_phi^0$]. The denoising objective at $t=0$ coincides with $f_phi compose g_theta = "Id"$ continuously.
 
 === High-level objectives <high-level-objectives>
 The detailed losses which we'll proceed to developing all serve the following objectives:
 
 1. Encoder-decoder bijectivity: $g_theta compose f_phi = f_phi compose g_theta = "Id"$.
-2. Round-trip estimates latent scores by denoising: $(f_phi^(plus.minus t) compose g_theta )(y_t) approx EE_plus.minus [y_0 \| y_t]$
-3. Minimize the estimated latent score mismatches
+2. Round-trip estimates of latent data scores via denoising: $(f_phi^t compose g_theta )(y_t) approx EE_plus [y_0 \| y_t]$
+3. Minimize mismatch between the estimated data latent score and the analytic Gaussian score:
 $
-  EE_(y tilde.op sigma^+_t) ||(f_phi^(+t) compose g_theta )(y_t) - (f_phi^(-t) compose g_theta )(y_t)||^2
+  EE_(y tilde.op sigma^+_t) ||(f_phi^t compose g_theta )(y_t) - EE_-^*[y_0 | y_t]||^2
 $
 
 #pagebreak()
@@ -76,25 +77,20 @@ The first term measures latent-space divergence, and the second-term quantifies 
 $
   D(sigma^+ || sigma^-) = EE_(t tilde.op "Unif"[0, 1]) [alpha_t EE_(y_t tilde.op sigma^+_t ) ||EE_+[y_0^+ | y_t] - EE_-[y_0^- | y_t]||^2]
 $
-Where $alpha_t = (1-t) slash t^3$ is a specific noise schedule. We'll now translate the forward-KL components into operational losses that can be sampled. Here's the complete catalog which transcribes the #link(<high-level-objectives>)[high-level objectives]. There are two denoising losses, one decoder-side score loss, and two cycle losses:
+Where $alpha_t = (1-t) slash t^3$ is the noise schedule that corresponds to MLE. We'll now translate the forward-KL components into operational losses that can be sampled. #blue[Define $R^t_(phi theta) = f_phi^t compose g_theta$ with $t$ defaulting to $0$, $"sg"(v)$ for stopgrad / detach, and $overline(t) := 1-t$]. There are two cycle reconstruction losses, one denoising loss, and one score matching loss:
 $
-  cal(L)_"denoise"^+ (phi) & := EE_(t tilde.op "Unif"[0, 1], x tilde.op rho^+, epsilon tilde.op cal(N)(0, I)) [
-    alpha_t ||y_0^+ - (f_phi^(+t) compose g_theta)(y_t^+)||^2
+  cal(L)_"denoise" (phi, theta) & := EE_(t tilde.op "Unif"[0, 1], x tilde.op rho^+, epsilon tilde.op cal(N)(0, I)) [
+    alpha_t ||y_0^+ - R_(phi theta) (y_t^+)||^2
   ] \
-  y_0^+ & := "stopgrad"(f_phi (x)), quad y_t^+ := (1-t) y_0^+ + t epsilon \
-  cal(L)_"denoise"^- (phi) & := EE_(t tilde.op "Unif"[0, 1], z tilde.op nu, epsilon tilde.op cal(N)(0, I)) [
-    alpha_t ||y_0^- - (f_phi^(-t) compose g_theta)(y_t^-)||^2
-  ] \
-  y_0^- & := "stopgrad"((f_phi compose g_theta)(z)), quad y_t^- := (1-t) y_0^- + t epsilon \
-  cal(L)_"score" (theta) & := EE_(y tilde.op sigma^+, t tilde.op "Unif"[0, 1], epsilon tilde.op cal(N)(0, I)) [
-    ||"stopgrad"[V (tilde(y), epsilon, t) + tilde(y)] - tilde(y)||^2
-  ] \
-  V (y, epsilon, t) & := -alpha_t dot nabla_y ||overline((f_phi^(+t) compose g_theta))(y_t) - overline((f_phi^(-t) compose g_theta))(y_t)||^2 \
-  y_t & := (1-t) y + t epsilon, quad tilde(y) := (f_phi compose g_theta)(y) \
-  cal(L)_"roundtrip" (theta, phi) & := EE_(y tilde.op sigma^+) ||(f_phi compose g_theta)(y) - y||^2 \
-  cal(L)_"reconstruct" (theta, phi) & := EE_(x tilde.op rho^+) ||g_theta (f_phi (x)) - x||^2
+  y_0^+ & := "stopgrad"(f_phi (x)), quad y_t^+ := overline(t) y_0^+ + t epsilon \
+  cal(L)_"score" (theta) &:= EE_(t tilde.op "Unif"[0, 1], x tilde.op rho^+, epsilon tilde.op cal(N)(0, I))||tilde(y) - "sg"(V(tilde(y), epsilon, t) + tilde(y))||^2 \
+  V (y, epsilon, t) & := -alpha_t dot nabla_y ||R^t_(phi theta)(y_t) - EE^*_-[y_0 | y_t ]||^2 \
+  y_t & := overline(t) y + t epsilon, quad tilde(y) := R_(phi theta)("sg"(f_phi (x)), quad EE_-^*[y_0 | y_t] := (overline(t) y_t) / (overline(t)^2 + t^2)\
+  cal(L)_"cycle"^- (theta, phi) & := EE_(y tilde.op nu)||R_(phi theta)(y) - y||^2 \
+  cal(L)_"cycle"^+ (theta, phi) & := EE_(y tilde.op sigma^+)||R_(phi theta)(y) - y||^2 \
+  cal(L)_"dpi" (theta, phi) & := EE_(x tilde.op rho^+)||(g_theta compose f_phi) (x) - x||^2
 $
-Where $alpha_t in RR$ is the noise schedule and overline denotes function application without gradient capture. Use $alpha_t = (1-t) slash t^3$ for exact MLE, and $alpha_t = 1 slash t^2$ for flow-matching's uniform-weighted velocity matching weighting.
+Use $alpha_t = overline(t) slash t^3$ for exact MLE, and $alpha_t = 1 slash t^2$ for flow-matching's uniform-weighted velocity matching weighting.
 
 === Score matching $=>$ encoder denoising + decoder drifting
 Define the score matching loss at time $t$ and latent $y_t$:
@@ -105,9 +101,9 @@ To reduce clutter, suppress dependence on $y_t$ and define the true posterior (d
 $
   y_+^* := EE_+[y_0^+ | y_t], quad y_-^* := EE_-[y_0^- | y_t]
 $
-and the round-trip estimators
+and the round-trip approximations; note that our "estimate" of the model latent denoiser is given by the analytic Gaussian denoiser $EE_-^*$:
 $
-  hat(y_+^*) := (f_phi^(+t) compose g_theta)(y_t), quad hat(y_-^*) := (f_phi^(-t) compose g_theta)(y_t)
+  hat(y_+^*) := (f_phi^t compose g_theta)(y_t), quad hat(y_-^*) := EE_-^*[y_0 | y_t ] = (overline(t) y_t) / (overline(t)^2 + t^2)
 $
 Critically note that #blue[$y_t$ needs to be sampled from the noised _data_ latent $sigma_t^+$]:
 $
@@ -126,69 +122,78 @@ This decomposes the target score-matching objective into _data-denoising fidelit
 
 ==== Data-latent denoising
 
-It's fairly straightforward to design the data denoising loss. This is an encoder-side objective, so we minimize it w.r.t. $phi$ while treating $theta$ as fixed.
+It's fairly straightforward to design the data denoising loss. This is an encoder-side objective, so we want to minimize it w.r.t. $phi$ while treating $theta$ as fixed.
 $
-  cal(L)_"denoise"^+ := EE_(t) [alpha_t dot EE_((y_0, y_t) tilde.op sigma_t^+) ||y_0 - (f^(+t)_phi compose g_theta)(y_t)||^2]
+  cal(L)_"denoise"^+ := EE_(t) EE_((y_0, y_t) tilde.op sigma_t^+) [alpha_t ||y_0 - R^t_(phi theta) (y_t)||^2]
 $
-To practically sample from this loss, we write the expectation using the given data distribution $rho^+$:
+In practice, the encoder's job is only possible when the decoder $g_theta$ provides invertible support, so we also optimize $theta$ (but with a lower learning rate). To practically sample from this loss, write the expectation using the given data distribution $rho^+$:
 $
   cal(L)_"denoise"^+
-  &:= EE_(t) [alpha_t dot EE_(x tilde.op rho^+ \ epsilon tilde.op cal(N)(0, I)) ||y_0 - (f^(+t)_phi compose g_theta)(y_t)||^2]\
+  &:= EE_(t) EE_(x tilde.op rho^+ \ epsilon tilde.op cal(N)(0, I)) [alpha_t ||y_0 - R^t_(phi theta) (y_t)||^2]\
   y_t &:= overline(t) y_0 + t epsilon, quad y_0 := "stopgrad"(f_phi (x))
 $
-We've abbreviated $overline(t) := 1-t$. Note the stopgrad application of $f_phi$ as well: we're just using $f_phi$ to sample from the pushforward.
-
-==== Model-latent denoising
-
-Here, we have to make a genuine approximation; the ideal model-latent denoising objective is
-$
-  (cal(L)_"denoise"^-)^* := EE_(t) [alpha_t dot EE_(y_t tilde.op sigma_t^+) ||EE_-[y_0 | y_t ] - (f^(-t)_phi compose g_theta)(y_t)||^2]
-$
-But there's no way simultaneously train $(f^(-t)_phi compose g_theta)$ to approximate the posterior under the model process $EE_-$, but weighted by the sampling over $sigma_t^+$. We settle for the second best
-$
-  cal(L)_"denoise"^- := EE_(t) [alpha_t dot EE_(z tilde.op nu, epsilon tilde.op cal(N)(0, I)) ||y_0 - (f^(-t)_phi compose g_theta)(y_t)||^2]
-  y_t := overline(t) y_0 + t epsilon, quad y_0 := "stopgrad"((f_phi compose g_theta)(z))
-$
+Note the stopgrad application of $f_phi$ as well: we're just using $f_phi$ to sample from the pushforward.
 
 ==== Estimated score mismatch
 
-We use overline to denote application without gradient capture. The remaining loss is $EE_(y_t tilde.op sigma_t^+) ||hat(y_-^*) - hat(y_+^*)||^2$ with analytic expression
+The score matching loss is $EE_(y_t tilde.op sigma_t^+) ||hat(y_-^*) - hat(y_+^*)||^2$ with analytic expression
 $
-  cal(L)_("score")^* (theta) = EE_t [alpha_t dot EE_(y_t tilde.op sigma^+_t) ||overline((f_phi^(+t) compose g_theta))(y_t) - overline((f_phi^(-t) compose g_theta))(y_t)||^2]
+  D(rho^+ || rho^-) = EE_(t, y_t tilde.op sigma^+_t) [alpha_t||R^t_(phi theta)(y_t) - EE_-^*[y_0 | y_t]||^2]
 $
-We want to minimize this loss w.r.t. $theta$, while holding the round-trip score estimators $f_phi^(plus.minus t) compose g_theta$ fixed.
+We want to minimize this loss w.r.t. $theta$, while holding the round-trip score estimator $R^t_(phi theta)$ fixed.
 
 One big problem with the loss above is that #blue[$y_t tilde.op sigma_t^+$ has no generator dependency]. This problem generally plagues one-shot generation models: the forward KL (or score matching) requires optimizing $theta$ under the true data measure, but data don't have $theta$-dependency.
 
-We introduce the *roundtrip trick*: given model latent $y=f_phi (x) tilde.op sigma^+$, it naively doesn't have $theta$-dependence. However, we can use $f_phi compose g_theta = "Id"$ on the latent support to infer which latent could have produced the data sample $x$, then round-trip the latent
+We introduce the *roundtrip trick*: given model latent $y=f_phi (x) tilde.op sigma^+$, it naively doesn't have $theta$-dependence. However, we can impose the reconstruction $g_theta compose f_phi approx "Id"$ over $rho^+$ to infer which latent $y = f_phi (x)$ could have approximately produced the data sample $x$, then the round-trip latent
 $
-  tilde(y) = (f_phi compose g_theta)(y)
+  tilde(y) = R_(phi theta) (y), quad
 $
-has proper generator $theta$ dependency. To ensure round-trip fidelity, we need
+has proper generator $theta$ dependency. To _ensure roundtrip fidelity_, we need
 $
-  cal(L)_"roundtrip" (theta, phi) = EE_(y tilde.op sigma^+) ||(f_phi compose g_theta)(y) - y||^2
+  cal(L)_"cycle"^+ (theta, phi) & := EE_(y tilde.op sigma^+)||R_(phi theta)(y) - y||^2
 $
-Using this trick, approximate
+To produce the _proper latent estimate for data sample $x$_,  we need
 $
-  tilde(cal(L))_("score") (theta) = EE_t [alpha_t dot EE_(y_t tilde.op sigma^+_t) ||overline((f_phi^(+t) compose g_theta))(tilde(y_t)) - overline((f_phi^(-t) compose g_theta))(tilde(y_t))||^2]
+  cal(L)_"dpi" (theta, phi) & := EE_(x tilde.op rho^+)||(g_theta compose f_phi) (x) - x||^2
 $
-We optimize this objective using latent drifting (stopgrad distillation): use the gradient of estimated score-difference w.r.t. latents to guide the generated latents.
+Using this trick, the surrogate loss is
 $
-  V (y, epsilon, t) := -alpha_t dot nabla_y||overline((f_phi^(+t) compose g_theta))(y_t) - overline((f_phi^(-t) compose g_theta))(y_t)||^2, quad y_t := (1-t) y + t epsilon
+  D(sigma^- || sigma^+) approx cal(L)_("score") (theta) = EE_(t, y_t tilde.op sigma^+_t)[alpha_t||R^t_(phi theta) (tilde(y)_t) - EE_-^*[y_0 | tilde(y)_t]||^2]
 $
-This is a curl-free gradient field. It points latent particles $y$ in the direction which minimizes the estimated score mismatch. This is the practical decoder-side objective, and the catalog above lists this final theta-loss rather than the idealized star-loss:
+Optimizing this loss with frozen $R^t_(phi theta)$ with respect to $theta$-dependency in $tilde(y)_t$ is equivalent to drifting.
+
+Another interpretation of drifting is as follows; in the ideal limit $R^t_(phi theta) = EE^*_+[y_0 | y_t]$, consider the potential of the (time, noise)-amortized drifting field
 $
-  cal(L)_"score" (theta) & = EE_(y tilde.op sigma^+, t, \ epsilon tilde.op cal(N)(0, I)) ||"stopgrad"[
-                             V_t (tilde(y), epsilon, t) + tilde(y)
-                           ] - tilde(y)||^2 \
-                tilde(y) & := (f_phi compose g_theta)(y)
+  EE_(t, epsilon)V (y, epsilon, t) & approx -nabla_y Phi(y) \
+  Phi(y) & = EE_(t, epsilon) [alpha_t||EE^*_+[y_0 | y_t] - EE^*_-[y_0 | y_t ]||^2 \
+  y_t & = overline(t)y_0 + t epsilon, quad EE_-^*[y_0 | y_t] := (overline(t) y_t) / (overline(t)^2 + t^2) \
+$
+The expectation of the drifting potential over the data latent distribution $y tilde.op sigma^+$ is $D(sigma^+ || sigma^-)$ via de Bruijn and Tweedie.
+$
+  D(sigma^+ || sigma^-) = EE_(y tilde.op sigma^+) Phi(y) = integral Phi(y) dif sigma^+(y)
+$
+The first variation of this functional w.r.t. $sigma^+(y)$ is $Phi(y)$; applying Otto's formula yields the Wasserstein gradient $nabla Phi(y)$. In this sense, we reparameterized $sigma^+$ using the roundtrip trick and use drifting to minimize $D(sigma^+ || sigma^-)$.
+
+==== Model-latent denoising
+
+The model-latent denoising objective is
+$
+  cal(L)_"denoise"^- := EE_(t) [alpha_t dot EE_(y_t tilde.op sigma_t^+) ||EE_-[y_0 | y_t ] - EE_-^*[y_0 | y_t]||^2]
+$
+with an analytic Gaussian denoiser
+$
+  EE_-^*[y_0 | y_t] = (overline(t)) / (overline(t)^2 + t^2) y_t
+$
+We surrogate-optimize this loss by guiding $sigma^- -> nu <== R_(phi theta) approx "Id"$ over $nu$. This yields
+$
+  cal(L)_"cycle"^- (theta, phi) & := EE_(y tilde.op nu)||R_(phi theta)(y) - y||^2
 $
 
 === DPI bound $=>$ data reconstruction loss
 
-The DPI term $EE_(y tilde.op sigma^+) D(P_(rho^+ | y) || P_(rho^-|y))$ can be upperbounded by the negative log-likelihood of a Gaussian decoder channel model, which reduces to a squared reconstruction loss:
+The DPI term $EE_(y tilde.op sigma^+) D(P_(rho^+ | y) || P_(rho^-|y))$ surrogate-optimized by the negative log-likelihood of a Gaussian decoder channel model, which reduces to a squared reconstruction loss:
 $
-  cal(L)_"reconstruct" (theta, phi) = EE_(x tilde.op rho^+) ||g_theta (f_phi (x)) - x||^2
+  cal(L)_"dpi" (theta, phi) = EE_(x tilde.op rho^+) ||(g_theta compose f_phi) (x) - x||^2
 $
 After observing latent $y$, model the posterior over $rho^-$ as a Gaussian centered at decoder output $g_theta (y)$ with variance $beta$:
 $
@@ -203,7 +208,3 @@ $
   & <= EE_(x tilde.op rho^+) 1/(2 beta) ||x - g_theta (f_phi (x))||^2 + C
   = 1/(2 beta) cal(L)_"reconstruct" + C
 $
-
-=== Addendum
-
-There are many variants which might be considered; for example, $f_phi compose g_theta = "Id"$ constrains $sigma_t^- approx nu$, meaning that we can possibly get rid of all the $cal(L)^-$ machinery and substitute with closed-form Gaussian quantities; this is similar to WAE / AAE with score-matching Gaussian regularization. Overall, I think there're some interesting ideas in the encoder-decoder roundtrip + Tweedie score-matching construction which might lead to, or inspire, interesting research.
