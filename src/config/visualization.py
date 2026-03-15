@@ -213,18 +213,6 @@ def _leaf_html(node: _TreeNode) -> str:
     return _pipe_html().join(segments)
 
 
-def _root_html(node: _TreeNode) -> str:
-    segments = [_segment_html(node.name, color=_FIELD_COLOR, bold=True)]
-    if _is_complicated_type_name(node.type_name):
-        segments.append(_segment_html(node.type_name, color=_CLASS_COLOR))
-    if not node.is_leaf:
-        suffix = "item" if node.total_children == 1 else "items"
-        segments.append(
-            _segment_html(f"{node.total_children:,} {suffix}", color=_COUNT_COLOR)
-        )
-    return _pipe_html().join(segments)
-
-
 def _tooltip_path(node: _TreeNode) -> str:
     return node.path or "(root)"
 
@@ -386,28 +374,17 @@ def _render_tree_root(
         gap="2px",
         style={"width": "100%"},
     ):
-        with solara.Div(
-            style=_leaf_card_style(),
-            attributes={"title": _tooltip_path(root)},
-        ):
-            solara.HTML(
-                tag="div",
-                unsafe_innerHTML=_root_html(root),
-                style="font-family:monospace;font-size:12px;line-height:1.2;",
-                attributes={"title": _tooltip_path(root)},
-            )
-
         if root.is_leaf:
+            _render_leaf_solara(root)
             return
 
-        for child in root.children:
-            _render_node_solara(
-                node=child,
-                depth=0,
-                expand_top_level=expand_top_level,
-                large_container_threshold=large_container_threshold,
-                max_container_height_px=max_container_height_px,
-            )
+        _render_node_solara(
+            node=root,
+            depth=0,
+            expand_top_level=expand_top_level,
+            large_container_threshold=large_container_threshold,
+            max_container_height_px=max_container_height_px,
+        )
 
 
 def visualize_nested_config(

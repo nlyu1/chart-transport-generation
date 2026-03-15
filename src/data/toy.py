@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Literal
 
+import numpy as np
+import plotly.graph_objects as go
 import torch
 from einops import einsum
 from jaxtyping import Float, Int
@@ -47,6 +49,49 @@ def _collate_toy_gaussian_batch(
     )
 
 
+def truncate_mode_samples_to_ring(
+    *,
+    noise: Float[Tensor, "batch plane_dim"],
+    mode_std: float,
+    ring_radius: float,
+) -> Float[Tensor, "batch plane_dim"]:
+    noise_radii = torch.linalg.vector_norm(noise, dim=-1, keepdim=True)
+    safe_noise_radii = torch.where(
+        noise_radii > 0.0,
+        noise_radii,
+        torch.ones_like(noise_radii),
+    )
+    ring_noise = noise * (ring_radius / safe_noise_radii)
+    return torch.where(noise_radii > 2.0 * mode_std, ring_noise, noise)
+
+
+def compute_mode_ring_residual(
+    *,
+    points_2d: Float[Tensor, "batch plane_dim"],
+    mode_centers: Float[Tensor, "num_modes plane_dim"],
+    ring_radius: float,
+) -> Float[Tensor, "batch"]:
+    distances_to_centers = torch.cdist(points_2d, mode_centers)
+    return (distances_to_centers - ring_radius).abs().min(dim=-1).values
+
+
+def project_batch_to_plane(
+    *,
+    batch: np.ndarray,
+    basis: Float[Tensor, "ambient_dim plane_dim"],
+) -> Float[Tensor, "batch plane_dim"]:
+    batch_tensor = torch.from_numpy(np.asarray(batch)).to(dtype=basis.dtype)
+    if batch_tensor.ndim != 2:
+        raise ValueError("batch must have shape [batch, ambient_dim] or [batch, 2]")
+    if batch_tensor.shape[-1] == basis.shape[0]:
+        return batch_tensor @ basis
+    if batch_tensor.shape[-1] == basis.shape[1]:
+        return batch_tensor
+    raise ValueError(
+        "batch must have last dimension equal to ambient_dim or plane_dim"
+    )
+
+
 class EmbeddedToyGaussianDataset(Dataset[dict[str, Tensor]]):
     def __init__(
         self,
@@ -72,6 +117,11 @@ class EmbeddedToyGaussianDataset(Dataset[dict[str, Tensor]]):
             generator=generator,
         )
         noise = torch.randn(size, 2, generator=generator) * mode_std
+        noise = truncate_mode_samples_to_ring(
+            noise=noise,
+            mode_std=mode_std,
+            ring_radius=ring_radius,
+        )
         self._x_2d = self._centers[self._mode_ids] + noise
         self._x_hd = einsum(
             self._x_2d,
@@ -168,3 +218,108 @@ class ToyGaussianDatasetConfig(DatasetConfig):
             num_modes=self.num_modes,
             ring_radius=self.ring_radius,
         )
+
+    def visualize(self, *, batch: np.ndarray) -> go.Figure:
+        basis = self.get_basis()
+        mode_centers = self.get_mode_centers().to(dtype=torch.float32, device="cpu")
+        projected_batch = project_batch_to_plane(batch=batch, basis=basis)
+        projected_batch = projected_batch.detach().to(dtype=torch.float32, device="cpu")
+
+        off_manifold_residual = compute_mode_ring_residual(
+            points_2d=projected_batch,
+            mode_centers=mode_centers,
+            ring_radius=self.ring_radius,
+        )
+        off_manifold_score = torch.clamp(
+            off_manifold_residual / (2.0 * self.mode_std),
+            min=0.0,
+            max=1.0,
+        )
+
+        figure = go.Figure()
+        for center_x, center_y in mode_centers.tolist():
+            figure.add_shape(
+                type="circle",
+                xref="x",
+                yref="y",
+                x0=center_x - self.ring_radius,
+                x1=center_x + self.ring_radius,
+                y0=center_y - self.ring_radius,
+                y1=center_y + self.ring_radius,
+                line=dict(color="rgba(45, 111, 142, 0.35)", width=1.5),
+            )
+
+        figure.add_trace(
+            go.Scatter(
+                x=(mode_centers[:, 0] + self.ring_radius).tolist(),
+                y=mode_centers[:, 1].tolist(),
+                mode="text",
+                text=[f"r={self.ring_radius:.2f}"] * self.num_modes,
+                textfont=dict(color="rgba(45, 111, 142, 0.85)", size=11),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=mode_centers[:, 0].tolist(),
+                y=mode_centers[:, 1].tolist(),
+                mode="markers+text",
+                text=[f"mode {mode_index}" for mode_index in range(self.num_modes)],
+                textposition="top center",
+                name="mode centers",
+                marker=dict(
+                    size=10,
+                    color="#2D708E",
+                    line=dict(color="#FFFFFF", width=1.0),
+                ),
+            )
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=projected_batch[:, 0].tolist(),
+                y=projected_batch[:, 1].tolist(),
+                mode="markers",
+                name="batch",
+                customdata=torch.stack(
+                    [off_manifold_residual, off_manifold_score],
+                    dim=-1,
+                ).tolist(),
+                marker=dict(
+                    size=8,
+                    color=off_manifold_score.tolist(),
+                    cmin=0.0,
+                    cmax=1.0,
+                    colorscale="Viridis",
+                    line=dict(color="rgba(255, 255, 255, 0.25)", width=0.5),
+                    colorbar=dict(
+                        title="off-manifold",
+                        tickvals=[0.0, 1.0],
+                        ticktext=["on", "off"],
+                    ),
+                ),
+                hovertemplate=(
+                    "x=%{x:.3f}<br>"
+                    "y=%{y:.3f}<br>"
+                    "ring residual=%{customdata[0]:.3f}<br>"
+                    "off-manifold score=%{customdata[1]:.3f}<extra></extra>"
+                ),
+            )
+        )
+        figure.update_layout(
+            template="plotly_white",
+            title="Toy Gaussian Mode Rings",
+            xaxis=dict(
+                title="x",
+                range=[-self.plane_limit, self.plane_limit],
+                zeroline=False,
+            ),
+            yaxis=dict(
+                title="y",
+                range=[-self.plane_limit, self.plane_limit],
+                scaleanchor="x",
+                scaleratio=1,
+                zeroline=False,
+            ),
+        )
+        return figure
