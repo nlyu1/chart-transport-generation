@@ -1,11 +1,33 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+
+from src.config.base import ConfigMethodsMixin
+
+from .dataloading import DataLoaderConfig, build_dataloader, make_generator
+
+TRAIN_DATALOADER_SEED_OFFSET = 20_000
+VAL_DATALOADER_SEED_OFFSET = 30_000
+
+
+class DatasetConfig(ConfigMethodsMixin, ABC):
+    @abstractmethod
+    def get_dataset(
+        self,
+        *,
+        split: Literal["train", "val"],
+        seed: int,
+    ) -> Dataset[Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def collate_batch(self, samples: list[Any]) -> Any:
+        raise NotImplementedError
 
 
 @dataclass(
@@ -15,17 +37,26 @@ from torch.utils.data import DataLoader
         extra="forbid",
     ),
 )
-class DataConfig(ABC):
-    """Declarative contract for train/validation data materialization."""
-
+class DataConfig(ConfigMethodsMixin):
     seed: int
+    dataset_config: DatasetConfig
+    trainloader_config: DataLoaderConfig
+    valloader_config: DataLoaderConfig
 
-    @abstractmethod
     def get_trainloader(self) -> DataLoader[Any]:
-        """Return the train split loader."""
-        raise NotImplementedError
+        dataset = self.dataset_config.get_dataset(split="train", seed=self.seed)
+        return build_dataloader(
+            dataset=dataset,
+            dataloader_config=self.trainloader_config,
+            collate_fn=self.dataset_config.collate_batch,
+            generator=make_generator(seed=self.seed + TRAIN_DATALOADER_SEED_OFFSET),
+        )
 
-    @abstractmethod
     def get_valloader(self) -> DataLoader[Any]:
-        """Return the validation split loader."""
-        raise NotImplementedError
+        dataset = self.dataset_config.get_dataset(split="val", seed=self.seed)
+        return build_dataloader(
+            dataset=dataset,
+            dataloader_config=self.valloader_config,
+            collate_fn=self.dataset_config.collate_batch,
+            generator=make_generator(seed=self.seed + VAL_DATALOADER_SEED_OFFSET),
+        )

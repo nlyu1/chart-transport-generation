@@ -26,20 +26,20 @@ VAL_SPLIT_SEED_OFFSET = 10_000
     ),
 )
 class ToyGaussianBatch:
-    """Batch payload for the embedded 2D Gaussian-mixture notebook experiment."""
-
     x_hd: Float[Tensor, "batch ambient_dim"]
     x_2d: Float[Tensor, "batch plane_dim"]
     mode_ids: Int[Tensor, "batch"]
 
 
-def _make_generator(seed: int) -> torch.Generator:
+def _make_generator(*, seed: int) -> torch.Generator:
     generator = torch.Generator(device="cpu")
     generator.manual_seed(seed)
     return generator
 
 
-def _collate_toy_gaussian_batch(samples: list[dict[str, Tensor]]) -> ToyGaussianBatch:
+def _collate_toy_gaussian_batch(
+    samples: list[dict[str, Tensor]],
+) -> ToyGaussianBatch:
     return ToyGaussianBatch(
         x_hd=torch.stack([sample["x_hd"] for sample in samples], dim=0),
         x_2d=torch.stack([sample["x_2d"] for sample in samples], dim=0),
@@ -48,8 +48,6 @@ def _collate_toy_gaussian_batch(samples: list[dict[str, Tensor]]) -> ToyGaussian
 
 
 class EmbeddedToyGaussianDataset(Dataset[dict[str, Tensor]]):
-    """Fixed split of the notebook's ring-of-Gaussians toy distribution."""
-
     def __init__(
         self,
         *,
@@ -66,7 +64,7 @@ class EmbeddedToyGaussianDataset(Dataset[dict[str, Tensor]]):
             num_modes=num_modes,
             ring_radius=ring_radius,
         )
-        generator = _make_generator(sample_seed)
+        generator = _make_generator(seed=sample_seed)
         self._mode_ids = torch.randint(
             low=0,
             high=num_modes,
@@ -97,7 +95,7 @@ def make_random_isometry(
     ambient_dim: int,
     seed: int,
 ) -> Float[Tensor, "ambient_dim plane_dim"]:
-    generator = _make_generator(seed)
+    generator = _make_generator(seed=seed)
     raw = torch.randn(ambient_dim, 2, generator=generator)
     basis, _ = torch.linalg.qr(raw, mode="reduced")
     return basis[:, :2]
@@ -121,25 +119,6 @@ def make_mode_centers(
     ),
 )
 class ToyGaussianDataConfig(DataConfig):
-    """Toy Gaussian data config for the 2D-ring benchmark.
-
-    Fields:
-    - `seed`: base RNG seed for split sampling and train-loader shuffling.
-    - `num_modes`: number of Gaussian modes placed uniformly on a ring.
-    - `ambient_dim`: ambient dimension of the embedded observations.
-    - `mode_std`: isotropic standard deviation of each 2D mode.
-    - `ring_radius`: radius of the informative 2D ring of centers.
-    - `plane_limit`: plotting bound used for projected 2D visualizations.
-    - `embed_seed`: RNG seed for the random 2D-to-ambient isometry.
-    - `batch_size`: train-loader batch size.
-    - `eval_size`: validation batch size.
-    - `train_size`: total number of synthetic training examples.
-    - `val_size`: total number of synthetic validation examples.
-    - `num_workers`: dataloader worker count.
-    - `pin_memory`: dataloader pin-memory flag.
-    - `drop_last_train`: whether the train loader drops the final short batch.
-    """
-
     num_modes: int
     ambient_dim: int
     mode_std: float
@@ -166,7 +145,7 @@ class ToyGaussianDataConfig(DataConfig):
             dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            generator=_make_generator(self.seed + TRAIN_SPLIT_SEED_OFFSET),
+            generator=_make_generator(seed=self.seed + TRAIN_SPLIT_SEED_OFFSET),
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             drop_last=self.drop_last_train,

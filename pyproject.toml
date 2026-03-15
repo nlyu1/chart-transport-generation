@@ -16,6 +16,7 @@ dependencies = [
     "pandas>=3.0.1,<3.1.0",
     "pydantic>=2.12.0,<2.13.0",
     "scipy>=1.17.1,<1.18.0",
+    "solara>=1.57.1",
     "torch>=2.9,<2.10",
     "torchaudio>=2.9,<2.10",
     "torchvision>=0.24,<0.25",
@@ -34,9 +35,6 @@ torch = [
 torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-torchaudio = [
-  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
 
 [dependency-groups]
 dev = [
@@ -48,8 +46,5 @@ dev = [
 [tool.ruff.lint]
 per-file-ignores = {"**/*.py" = ["F821", "F722"]}
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-
 [tool.setuptools.packages.find]
-where = ["src"]
+include = ["src*"]

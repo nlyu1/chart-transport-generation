@@ -1,4 +1,1 @@
-__all__ = [
-    "base",
-    "toy",
-]
+__all__ = ["base", "cifar", "dataloading", "mnist", "toy"]
