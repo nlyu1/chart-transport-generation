@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from dataclasses import dataclass as python_dataclass
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import ConfigDict
-from pydantic.dataclasses import dataclass
+from pydantic.dataclasses import dataclass as pydantic_dataclass
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from src.config.base import ConfigMethodsMixin
@@ -13,6 +15,20 @@ from .dataloading import DataLoaderConfig, build_dataloader, make_generator
 
 TRAIN_DATALOADER_SEED_OFFSET = 20_000
 VAL_DATALOADER_SEED_OFFSET = 30_000
+
+TGenerativeData = TypeVar("TGenerativeData", bound="GenerativeData")
+
+
+@python_dataclass(kw_only=True, frozen=True)
+class GenerativeData:
+    x: Tensor
+
+
+@python_dataclass(kw_only=True, frozen=True)
+class GenerativeBatch(ABC, Generic[TGenerativeData]):
+    @abstractmethod
+    def data(self) -> TGenerativeData:
+        raise NotImplementedError
 
 
 class DatasetConfig(ConfigMethodsMixin, ABC):
@@ -26,11 +42,11 @@ class DatasetConfig(ConfigMethodsMixin, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def collate_batch(self, samples: list[Any]) -> Any:
+    def collate_batch(self, samples: list[Any]) -> GenerativeBatch[Any]:
         raise NotImplementedError
 
 
-@dataclass(
+@pydantic_dataclass(
     kw_only=True,
     config=ConfigDict(
         arbitrary_types_allowed=True,
@@ -43,7 +59,7 @@ class DataConfig(ConfigMethodsMixin):
     trainloader_config: DataLoaderConfig
     valloader_config: DataLoaderConfig
 
-    def get_trainloader(self) -> DataLoader[Any]:
+    def get_trainloader(self) -> DataLoader[GenerativeBatch[Any]]:
         dataset = self.dataset_config.get_dataset(split="train", seed=self.seed)
         return build_dataloader(
             dataset=dataset,
@@ -52,7 +68,7 @@ class DataConfig(ConfigMethodsMixin):
             generator=make_generator(seed=self.seed + TRAIN_DATALOADER_SEED_OFFSET),
         )
 
-    def get_valloader(self) -> DataLoader[Any]:
+    def get_valloader(self) -> DataLoader[GenerativeBatch[Any]]:
         dataset = self.dataset_config.get_dataset(split="val", seed=self.seed)
         return build_dataloader(
             dataset=dataset,

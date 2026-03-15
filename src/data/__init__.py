@@ -1,1 +1,1 @@
-__all__ = ["base", "cifar", "dataloading", "mnist", "toy"]
+__all__ = ["base", "cifar", "dataloading", "mnist", "unity_gaussian_mixture"]
