@@ -57,8 +57,7 @@ class LatentGenerationLossConfig(BaseConfig):
     cycle_data_weight: float
     cycle_prior_weight: float
     denoising_weight: float
-    score_weight: float
-    rev_score_weight: float
+    denoising_match_weight: float
 
     @model_validator(mode="after")
     def _validate_config(self) -> "LatentGenerationLossConfig":

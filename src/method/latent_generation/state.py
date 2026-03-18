@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
+from jaxtyping import Float
 from pydantic import ConfigDict
 from torch import Tensor
 
@@ -9,11 +10,6 @@ from src.data.base import GenerativeBatch
 from src.method.base import MethodState, MethodStepOutput
 from src.method.latent_generation.config import LatentGenerationLossConfig
 from src.method.latent_generation.model import LatentGenerationModel
-from src.method.utils import (
-    apply_batch_scalars,
-    gaussian_posterior_mean,
-    weighted_mse,
-)
 
 
 class LatentGenerationStepOutput(MethodStepOutput):
@@ -57,6 +53,57 @@ class LatentGenerationState(MethodState):
         )
         return mean.square().mean() + (cov - eye).square().mean()
 
+    @staticmethod
+    def compute_analytic_gaussian_denoiser(
+        *,
+        y_t: Float[Tensor, "batch latent_dim"],
+        t: Float[Tensor, "batch 1"],
+    ) -> Float[Tensor, "batch latent_dim"]:
+        denoising_coef = (1.0 - t) / ((1.0 - t).square() + t.square())
+        return denoising_coef * y_t
+
+    def compute_score_mismatch_potential(
+        self,
+        *,
+        model: LatentGenerationModel,
+        y: Float[Tensor, "batch latent_dim"],
+        t: Float[Tensor, "batch 1"],
+        eps: Float[Tensor, "batch latent_dim"],
+    ) -> Float[Tensor, "batch"]:
+        y_t = (1.0 - t) * y + t * eps
+        y_denoised = model.roundtrip(
+            y=y_t,
+            t=t,
+            apply_as_frozen=True,
+        )
+        y_target = self.compute_analytic_gaussian_denoiser(
+            y_t=y_t,
+            t=t,
+        )
+        alpha = self.loss_config.get_noise_weight(t=t)
+        return (
+            alpha * (y_denoised - y_target).square().mean(dim=-1, keepdim=True)
+        ).squeeze(-1)
+
+    def compute_score_matching_drift(
+        self,
+        *,
+        model: LatentGenerationModel,
+        y: Float[Tensor, "batch latent_dim"],
+        t: Float[Tensor, "batch 1"],
+        eps: Float[Tensor, "batch latent_dim"],
+    ) -> Float[Tensor, "batch latent_dim"]:
+        score_mismatch_potential = self.compute_score_mismatch_potential(
+            model=model,
+            y=y,
+            t=t,
+            eps=eps,
+        )
+        return -torch.autograd.grad(
+            score_mismatch_potential.sum(),
+            y,
+        )[0]
+
     def compute_losses(
         self,
         *,
@@ -70,13 +117,15 @@ class LatentGenerationState(MethodState):
         y_data_target = y_data.detach()
         x_recon = model.decode(y=y_data)
 
-        y_cycle_data = model.roundtrip(y=y_data_target)
+        x_cycle_data = model.decode(y=y_data_target)
+        y_cycle_data = model.encode(x=x_cycle_data)
         z = self.draw_prior_latents(
             batch_size=batch_size,
             device=x.device,
             dtype=x.dtype,
         )
-        z_cycle = model.roundtrip(y=z)
+        x_cycle_prior = model.decode(y=z)
+        z_cycle = model.encode(x=x_cycle_prior)
 
         t = self.loss_config.sample_time(
             batch_size=batch_size,
@@ -86,72 +135,32 @@ class LatentGenerationState(MethodState):
         alpha = self.loss_config.get_noise_weight(t=t)
 
         eps_denoise = torch.randn_like(y_data_target)
-        y_t = apply_batch_scalars(y_data_target, 1.0 - t) + apply_batch_scalars(
-            eps_denoise,
-            t,
-        )
+        y_t = (1.0 - t) * y_data_target + t * eps_denoise
         y_denoised = model.roundtrip(y=y_t, t=t)
 
-        x_roundtrip = model.decode(y=y_data_target)
         y_roundtrip = model.encode(
-            x=x_roundtrip,
+            x=x_cycle_data,
             apply_as_frozen=True,
         )
-        eps_score = torch.randn_like(y_roundtrip)
-        y_roundtrip_t = apply_batch_scalars(y_roundtrip, 1.0 - t) + apply_batch_scalars(
-            eps_score,
-            t,
-        )
-        y_score = model.roundtrip(
-            y=y_roundtrip_t,
+        eps_denoising_match = torch.randn_like(y_roundtrip)
+        score_matching_drift = self.compute_score_matching_drift(
+            model=model,
+            y=y_roundtrip,
             t=t,
-            apply_as_frozen=True,
+            eps=eps_denoising_match,
         )
-        y_score_target = gaussian_posterior_mean(
-            y_t=y_roundtrip_t.detach(),
-            t=t,
-        )
+        y_score_target = (y_roundtrip.detach() + score_matching_drift.detach()).detach()
 
-        x_prior = model.decode(y=z)
-        y_prior = model.encode(
-            x=x_prior,
-            apply_as_frozen=True,
-        )
-        eps_rev_score = torch.randn_like(y_prior)
-        y_prior_t = apply_batch_scalars(y_prior, 1.0 - t) + apply_batch_scalars(
-            eps_rev_score,
-            t,
-        )
-        y_rev_score = model.roundtrip(
-            y=y_prior_t,
-            t=t,
-            apply_as_frozen=True,
-        )
-        y_rev_score_target = gaussian_posterior_mean(
-            y_t=y_prior_t.detach(),
-            t=t,
-        )
+        denoising_loss = (alpha * (y_denoised - y_data_target).square()).mean()
+        denoising_match_loss = F.mse_loss(y_roundtrip, y_score_target)
 
         unweighted_loss_terms = {
             "reconstruction": F.mse_loss(x_recon, x),
             "prior_matching": self.compute_prior_matching_loss(y_data=y_data),
             "cycle_data": F.mse_loss(y_cycle_data, y_data_target),
             "cycle_prior": F.mse_loss(z_cycle, z),
-            "denoising": weighted_mse(
-                pred=y_denoised,
-                target=y_data_target,
-                weight=alpha,
-            ),
-            "score": weighted_mse(
-                pred=y_score,
-                target=y_score_target,
-                weight=alpha,
-            ),
-            "rev_score": weighted_mse(
-                pred=y_rev_score,
-                target=y_rev_score_target,
-                weight=alpha,
-            ),
+            "denoising": denoising_loss,
+            "denoising_match": denoising_match_loss,
         }
         weighted_loss_terms = {
             "reconstruction": self.loss_config.reconstruction_weight
@@ -164,9 +173,8 @@ class LatentGenerationState(MethodState):
             * unweighted_loss_terms["cycle_prior"],
             "denoising": self.loss_config.denoising_weight
             * unweighted_loss_terms["denoising"],
-            "score": self.loss_config.score_weight * unweighted_loss_terms["score"],
-            "rev_score": self.loss_config.rev_score_weight
-            * unweighted_loss_terms["rev_score"],
+            "denoising_match": self.loss_config.denoising_match_weight
+            * unweighted_loss_terms["denoising_match"],
         }
         total_loss = sum(weighted_loss_terms.values())
 

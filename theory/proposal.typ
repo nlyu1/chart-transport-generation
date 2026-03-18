@@ -172,7 +172,7 @@ The expectation of the drifting potential over the data latent distribution $y t
 $
   D(sigma^+ || sigma^-) = EE_(y tilde.op sigma^+) Phi(y) = integral Phi(y) dif sigma^+(y)
 $
-The first variation of this functional w.r.t. $sigma^+(y)$ is $Phi(y)$; applying Otto's formula yields the Wasserstein gradient $nabla Phi(y)$. In this sense, we reparameterize $sigma^+$ using the roundtrip trick and use drifting to minimize $D(sigma^+ || sigma^-)$.
+Strictly speaking, this first-variation statement is exact only under a frozen-denoiser approximation for $EE_+^*[y_0 | y_t]$ / $R^t_(phi theta)$; otherwise the posterior denoiser itself varies with $sigma^+$. Under this approximation, the first variation w.r.t. $sigma^+(y)$ is $Phi(y)$; applying Otto's formula yields the Wasserstein gradient $nabla Phi(y)$. In this sense, we reparameterize $sigma^+$ using the roundtrip trick and use drifting to minimize $D(sigma^+ || sigma^-)$.
 
 ==== Model-latent denoising
 

@@ -116,6 +116,7 @@ class UnityGaussianMixtureDatasetConfig(DatasetConfig):
         self,
         *,
         points_by_class: dict[str, Tensor],
+        velocities_by_class: dict[str, Tensor] | None = None,
         title: str | None = None,
         alpha: float = 0.4,
     ) -> "go.Figure":
@@ -126,6 +127,7 @@ class UnityGaussianMixtureDatasetConfig(DatasetConfig):
         return visualize_unity_gaussian_mixture(
             config=self,
             points_by_class=points_by_class,
+            velocities_by_class=velocities_by_class,
             title=title,
             alpha=alpha,
         )
