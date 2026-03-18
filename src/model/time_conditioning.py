@@ -52,20 +52,35 @@ class TimeConditioning(nn.Module):
         self.embedding = SinusoidalTimeEmbedding(
             min_t_lambda=config.min_t_lambda,
             max_t_lambda=config.max_t_lambda,
-            embedding_dim=config.embedding_dim,
+            embedding_dim=config.sinusoidal_dim,
+        )
+        self.projection = nn.Sequential(
+            nn.Linear(
+                in_features=config.sinusoidal_dim,
+                out_features=config.hidden_dim,
+                bias=True,
+            ),
+            nn.SiLU(),
+            nn.Linear(
+                in_features=config.hidden_dim,
+                out_features=config.output_dim,
+                bias=True,
+            ),
         )
 
     def forward(
         self,
         t: Float[Tensor, "batch 1"],
-    ) -> Float[Tensor, "batch embedding_dim"]:
-        return self.embedding(t)
+    ) -> Float[Tensor, "batch output_dim"]:
+        return self.projection(self.embedding(t))
 
 
 class TimeConditioningConfig(ModelConfig):
     min_t_lambda: float
     max_t_lambda: float
-    embedding_dim: int
+    sinusoidal_dim: int
+    hidden_dim: int
+    output_dim: int
 
     @model_validator(mode="after")
     def _validate_config(self) -> "TimeConditioningConfig":
@@ -75,8 +90,12 @@ class TimeConditioningConfig(ModelConfig):
             raise ValueError("max_t_lambda must be positive")
         if self.min_t_lambda > self.max_t_lambda:
             raise ValueError("min_t_lambda must be <= max_t_lambda")
-        if self.embedding_dim <= 0:
-            raise ValueError("embedding_dim must be positive")
+        if self.sinusoidal_dim <= 0:
+            raise ValueError("sinusoidal_dim must be positive")
+        if self.hidden_dim <= 0:
+            raise ValueError("hidden_dim must be positive")
+        if self.output_dim <= 0:
+            raise ValueError("output_dim must be positive")
         return self
 
     def get_model(self) -> TimeConditioning:

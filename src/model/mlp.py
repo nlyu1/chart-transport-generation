@@ -67,7 +67,8 @@ class ResidualMLPConfig(ModelConfig):
     input_dim: int
     hidden_dim: int
     output_dim: int
-    add_embedding: bool
+    condition_time: bool
+    time_embedding_dim: int
 
     @classmethod
     def initialize(
@@ -75,13 +76,15 @@ class ResidualMLPConfig(ModelConfig):
         *,
         input_dim: int,
         output_dim: int,
-        add_embedding: bool,
+        condition_time: bool,
+        time_embedding_dim: int,
     ) -> Self:
         return cls(
             input_dim=input_dim,
             hidden_dim=2 * max(input_dim, output_dim),
             output_dim=output_dim,
-            add_embedding=add_embedding,
+            condition_time=condition_time,
+            time_embedding_dim=time_embedding_dim,
         )
 
     @property
@@ -100,6 +103,12 @@ class ResidualMLP(nn.Module):
         self.config = config
         self.layer_norm = nn.LayerNorm(config.input_dim)
         self.mlp = config.mlp_config.get_model()
+        if config.condition_time:
+            self.time_projection = nn.Linear(
+                in_features=config.time_embedding_dim,
+                out_features=config.input_dim,
+                bias=True,
+            )
         if config.input_dim == config.output_dim:
             self.residual_projection = nn.Identity()
         else:
@@ -112,13 +121,13 @@ class ResidualMLP(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "... input_dim"],
-        embedding: Float[Tensor, "... input_dim"] | None = None,
+        embedding: Float[Tensor, "... time_embedding_dim"] | None = None,
     ) -> Float[Tensor, "... output_dim"]:
         hidden = self.layer_norm(x)
-        if self.config.add_embedding:
+        if self.config.condition_time:
             if embedding is None:
-                raise ValueError("embedding is required when add_embedding=True")
-            hidden = hidden + embedding
+                raise ValueError("embedding is required when condition_time=True")
+            hidden = hidden + self.time_projection(embedding)
         residual = self.residual_projection(x)
         return residual + self.mlp(hidden)
 
@@ -135,16 +144,24 @@ class StackedResidualMLPConfig(ModelConfig):
         layer_dims: list[int],
         time_conditioning_config: TimeConditioningConfig | None = None,
     ) -> Self:
+        time_embedding_dim = (
+            0
+            if time_conditioning_config is None
+            else time_conditioning_config.output_dim
+        )
         return cls(
             layer_dims=layer_dims,
             blocks_configs=[
                 ResidualMLPConfig.initialize(
                     input_dim=input_dim,
                     output_dim=output_dim,
-                    add_embedding=time_conditioning_config is not None and index > 0,
+                    condition_time=time_conditioning_config is not None,
+                    time_embedding_dim=time_embedding_dim,
                 )
-                for index, (input_dim, output_dim) in enumerate(
-                    zip(layer_dims[:-1], layer_dims[1:], strict=True)
+                for input_dim, output_dim in zip(
+                    layer_dims[:-1],
+                    layer_dims[1:],
+                    strict=True,
                 )
             ],
             time_conditioning_config=time_conditioning_config,
@@ -154,12 +171,6 @@ class StackedResidualMLPConfig(ModelConfig):
     def _validate_config(self) -> "StackedResidualMLPConfig":
         if len(self.layer_dims) < 2:
             raise ValueError("layer_dims must have at least two entries")
-        if self.time_conditioning_config is not None:
-            for hidden_dim in self.layer_dims[1:-1]:
-                if hidden_dim != self.time_conditioning_config.embedding_dim:
-                    raise ValueError(
-                        "time_conditioning_config.embedding_dim must match all intermediate layer_dims"
-                    )
         return self
 
     def get_model(self) -> "StackedResidualMLP":
@@ -189,8 +200,5 @@ class StackedResidualMLP(nn.Module):
             embedding = self.time_conditioning(t)
         hidden = x
         for block in self.blocks:
-            if block.config.add_embedding:
-                hidden = block(hidden, embedding=embedding)
-            else:
-                hidden = block(hidden)
+            hidden = block(hidden, embedding=embedding)
         return hidden

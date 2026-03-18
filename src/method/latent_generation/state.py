@@ -43,6 +43,20 @@ class LatentGenerationState(MethodState):
             dtype=dtype,
         )
 
+    @staticmethod
+    def compute_prior_matching_loss(*, y_data: Tensor) -> Tensor:
+        latent_dim = int(y_data.shape[-1])
+        mean = y_data.mean(dim=0)
+        centered = y_data - mean
+        cov = centered.transpose(0, 1) @ centered
+        cov = cov / max(int(y_data.shape[0]) - 1, 1)
+        eye = torch.eye(
+            latent_dim,
+            device=y_data.device,
+            dtype=y_data.dtype,
+        )
+        return mean.square().mean() + (cov - eye).square().mean()
+
     def compute_losses(
         self,
         *,
@@ -98,8 +112,29 @@ class LatentGenerationState(MethodState):
             t=t,
         )
 
+        x_prior = model.decode(y=z)
+        y_prior = model.encode(
+            x=x_prior,
+            apply_as_frozen=True,
+        )
+        eps_rev_score = torch.randn_like(y_prior)
+        y_prior_t = apply_batch_scalars(y_prior, 1.0 - t) + apply_batch_scalars(
+            eps_rev_score,
+            t,
+        )
+        y_rev_score = model.roundtrip(
+            y=y_prior_t,
+            t=t,
+            apply_as_frozen=True,
+        )
+        y_rev_score_target = gaussian_posterior_mean(
+            y_t=y_prior_t.detach(),
+            t=t,
+        )
+
         unweighted_loss_terms = {
             "reconstruction": F.mse_loss(x_recon, x),
+            "prior_matching": self.compute_prior_matching_loss(y_data=y_data),
             "cycle_data": F.mse_loss(y_cycle_data, y_data_target),
             "cycle_prior": F.mse_loss(z_cycle, z),
             "denoising": weighted_mse(
@@ -112,10 +147,17 @@ class LatentGenerationState(MethodState):
                 target=y_score_target,
                 weight=alpha,
             ),
+            "rev_score": weighted_mse(
+                pred=y_rev_score,
+                target=y_rev_score_target,
+                weight=alpha,
+            ),
         }
         weighted_loss_terms = {
             "reconstruction": self.loss_config.reconstruction_weight
             * unweighted_loss_terms["reconstruction"],
+            "prior_matching": self.loss_config.prior_matching_weight
+            * unweighted_loss_terms["prior_matching"],
             "cycle_data": self.loss_config.cycle_data_weight
             * unweighted_loss_terms["cycle_data"],
             "cycle_prior": self.loss_config.cycle_prior_weight
@@ -123,6 +165,8 @@ class LatentGenerationState(MethodState):
             "denoising": self.loss_config.denoising_weight
             * unweighted_loss_terms["denoising"],
             "score": self.loss_config.score_weight * unweighted_loss_terms["score"],
+            "rev_score": self.loss_config.rev_score_weight
+            * unweighted_loss_terms["rev_score"],
         }
         total_loss = sum(weighted_loss_terms.values())
 

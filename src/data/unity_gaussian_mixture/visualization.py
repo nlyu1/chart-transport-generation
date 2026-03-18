@@ -176,5 +176,6 @@ def visualize_unity_gaussian_mixture(
             title="",
             scaleanchor="x",
         ),
+        dragmode="pan",
     )
     return figure

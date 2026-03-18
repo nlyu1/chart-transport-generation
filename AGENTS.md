@@ -14,6 +14,7 @@
 - Unless absolutely needed, strongly disprefer default instance values.
 - Prefer strict failure to permissive try/except
 - Do not write over-defensive validation which clutter code.
+- Strongly prefer Jaxtyping tensors. Prefer useful typing and faithful usage over over-defensive checks.
 
 # Testing
 
