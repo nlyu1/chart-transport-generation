@@ -80,19 +80,40 @@ def compute_gaussian_drifting_statistics(
     stability_eps: float,
     exclude_self_interactions: bool,
 ) -> GaussianDriftingStatistics:
+    return compute_gaussian_drifting_statistics_at_query(
+        query_samples=model_samples,
+        model_reference_samples=model_samples,
+        data_samples=data_samples,
+        bandwidth=bandwidth,
+        objective=objective,
+        stability_eps=stability_eps,
+        exclude_model_reference_diagonal=exclude_self_interactions,
+    )
+
+
+def compute_gaussian_drifting_statistics_at_query(
+    *,
+    query_samples: Float[Tensor, "query dim"],
+    model_reference_samples: Float[Tensor, "model_batch dim"],
+    data_samples: Float[Tensor, "data_batch dim"],
+    bandwidth: float,
+    objective: Literal["reverse_kl", "forward_kl"],
+    stability_eps: float,
+    exclude_model_reference_diagonal: bool,
+) -> GaussianDriftingStatistics:
     data_density, data_field = compute_normalized_kernel_field(
-        query=model_samples,
+        query=query_samples,
         reference=data_samples,
         bandwidth=bandwidth,
         stability_eps=stability_eps,
         exclude_diagonal=False,
     )
     model_density, model_field = compute_normalized_kernel_field(
-        query=model_samples,
-        reference=model_samples,
+        query=query_samples,
+        reference=model_reference_samples,
         bandwidth=bandwidth,
         stability_eps=stability_eps,
-        exclude_diagonal=exclude_self_interactions,
+        exclude_diagonal=exclude_model_reference_diagonal,
     )
     canonical_field = data_field - model_field
     if objective == "forward_kl":
