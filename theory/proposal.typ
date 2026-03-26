@@ -224,9 +224,9 @@ $
 $
 We can consider three optimizations:
 
-1. Use a pre-specified noise-spectrum time-grid $t_0, ..., t_m$ to approximate the integral.
+1. Use a pre-specified noise-spectrum time-grid $t_0, ..., t_m$ to approximate the integral. Also, the model-term expectation can be analytically integrated.
 2. Use independent $epsilon$ for each sample and timestep.
-3. Evaluate for antithetic pairs $plus.minus epsilon$
+3. Evaluate for antithetic pairs $plus.minus epsilon$.
 
 === Prior symmetry-breaking
 
