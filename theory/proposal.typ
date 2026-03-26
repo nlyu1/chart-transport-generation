@@ -4,6 +4,7 @@
   stroke: hyperlink-blue,
   text(fill: hyperlink-blue, it.body),
 )
+#set math.equation(numbering: "(1)")
 
 = Chart transport proposal
 Nicholas (Xingjian) Lyu. Mar 23, 2026
@@ -11,7 +12,7 @@ Nicholas (Xingjian) Lyu. Mar 23, 2026
 
 *TLDR*: we propose a generative modeling protocol which #blue[_sidesteps density estimation variance in high-dimensions_] and #blue[_performs score matching_] under the correct data measure #footnote[Score matching under the model distribution minimizes the mode-seeking #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#ex-otto-reverse-kl")[reverse KL], instead of the proper MLE objective.]. The protocol admits a clean MLE interpretation.
 
-The main mathematical tools are #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#thm-tweedie")[Tweedie's formula] and #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#prp-fm")[de Bruijn's identity]. In my opinion, they are the mathematical powerhouse behind the stability and dimension-scalability of flow matching models. We couple these tools with one-step generation by using an encoder-decoder construction #footnote[equivalently, generator-critic; there are many perspectives here]. Main highlights of the method:
+The main mathematical tools are #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#thm-tweedie")[Tweedie's formula] and #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#prp-fm")[de Bruijn's identity]. In my opinion, they are the mathematical workhorse behind the stability and dimension-scalability of flow matching models. We apply these tools to one-step generation using an encoder-decoder construction. Highlights:
 
 1. Low-variance forward-KL optimization without importance sampling.
 2. Robustness under weak data-model support overlap in high dimensions.
@@ -23,7 +24,7 @@ We have shown in #link("https://snakamoto404.github.io/blogs/machine-learning/ot
 
 1. *Gaussian KDE variance scales with data dimension*: this is one possible explanation for why ImageNet drifting does not work without a good pretrained encoder.
 2. *KL objective is stiff*: KL blows up when supports don't overlap. When data and model distributions don't overlap, drifting fails because the fundamental Wasserstein-functional objective blows up, _even if density estimates were perfect_. This is another possible explanation for why drifting struggles to natively scale to high dimensions.
-3. *The reverse-KL sampling problem*: it's well-known in generative modeling and RL literature  that optimizing the reverse KL $D(rho_"model" || rho_"data")$ is prone to mode collapse and low diversity. However, optimizing the proper forward-KL objective is hard because it requires sampling the model w.r.t. the _data distribution_ $EE_"data"$, while reverse-KL samples the model naturally under $EE_"model"$. Typical one-shot models cannot sample from $EE_"data"$ _because we can't tell which latent could have generated a data sample_.
+3. *The reverse-KL sampling problem* #footnote[See also #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#proposition-maximum-likelihood-drifting")[MLE drifting].]: it's well-known in generative modeling and RL literature  that optimizing the reverse KL $D(rho_"model" || rho_"data")$ is prone to mode collapse and low diversity. However, optimizing the proper forward-KL objective is hard because it requires sampling the model w.r.t. the _data distribution_ $EE_"data"$, while reverse-KL samples the model naturally under $EE_"model"$. Typical one-shot models cannot sample from $EE_"data"$ _because we can't tell which latent could have generated a data sample_.
 
 
 == Escape hatches
@@ -38,7 +39,7 @@ $
 
 == High-level proposal
 
-Our proposal is motivated by applying the escape hatches above to drifting with MLE in mind. From first principles, properly #footnote[we could consider importance sampling, but it introduces high variance and dependence upon explicit density estimation of $rho_"model" slash rho_"data"$.] solving the reverse-KL sampling problem requires us to know _what latent would have generated a data sample_; this calls for an inverse $f_phi$ to the generator $g_theta$. We naturally propose an encoder-decoder architecture
+Our proposal is motivated by applying the escape hatches above to drifting with MLE in mind. From first principles, properly #footnote[we could consider importance sampling, but it introduces high variance and dependence upon explicit density estimation of $rho_"model" slash rho_"data"$.] solving the reverse-KL sampling problem requires us to know _what latent would have generated a data sample_; this calls for an inverse $f_phi$ to the generator $g_theta$. We  propose an encoder-decoder architecture
 $
   "latent" stretch(harpoons.rtlb)^(g_theta)_(f_phi) "model sample"
 $
@@ -60,7 +61,7 @@ $
     (f_phi compose g_theta)(z) = z " on " nu
   }
 $
-On $cal(M)$, the model latent is analytic: the prior-side identity gives $sigma^- = nu = cal(N)(0, I)$. The sample-space MLE objective therefore reduces to pushing the data latent $sigma^+$ towards the Gaussian prior while staying on the chart manifold. Define the noised latent processes by the canonical linear interpolation with $t in [0, 1]$:
+On $cal(M)$, the model latent is analytic: the prior-side identity gives $sigma^- = nu = cal(N)(0, I)$. Sample-space MLE objective reduces to pushing the data latent $sigma^+$ towards the Gaussian prior while staying on the chart manifold (this is made precise by the data-processing inequality). Define the noised latent processes by the canonical linear interpolation with $t in [0, 1]$:
 $
   sigma^plus.minus_t = (1-t) sigma^plus.minus + t cal(N)(0, I)
 $
@@ -69,49 +70,47 @@ $
   sigma^-_t = cal(N)(0, (t^2 + overline(t)^2) I)
 $
 
-We use #blue[a separate noise critic $s_psi$ to learn the score of the noised data latent $sigma^+_t$]. The model-side score is analytic, so only the data-side score must be learned. The latent score difference
+We use #blue[a separate noise critic $epsilon_psi$ to learn the score $nabla log sigma^+_t (y_t)$ of the noised data latent]. The model-side score is analytic, so only the data-side score must be learned. The latent score difference
 $
   delta_t (y_t) := nabla log sigma^+_t (y_t) - nabla log sigma^-_t (y_t)
 $
-is the Wasserstein gradient of latent KL respect to the flowing data latent. We estimate this field with the critic, pull it back to the clean latent, and update the chart pair in a projection-like way so that both encoder and decoder receive first-principles supervision.
+is the per-time forward-KL $D(sigma_t^+ || sigma_t^-)$ Wasserstein gradient with respect to the flowing data latent. We can use this to estimate the clean-latent transport field $delta(y)$ and update the chart pair.
 
 === High-level objectives <high-level-objectives>
 The detailed losses which we'll proceed to developing all serve the following objectives:
 
 1. Manifold constraint: $(g_theta compose f_phi)(x) = x$ on $rho^+$ and $(f_phi compose g_theta)(z) = z$ on $nu$.
-2. Critic correctly estimates the noised data-latent score: $s_psi (y_t, t) approx nabla log sigma^+_t (y_t)$.
-3. Transport the chart along the sampled score-difference field while remaining on $cal(M)$:
+2. Critic correctly estimates the noised data-latent score: $hat(s)_psi (y_t, t) approx nabla log sigma^+_t (y_t)$.
+3. Transport the chart along the clean-latent field $delta (y)$ while remaining on $cal(M)$. In practice we work with an estimator $hat(delta) (y) approx delta (y)$ and fit the chart to the induced latent step:
 $
-  & EE_(x tilde.op rho^+, t, epsilon tilde.op cal(N)(0, I))
-    ||f_phi(x) - "sg"(y - eta dot overline(t)alpha_t dot delta_t (y_t))||^2 \
-  & EE_(x tilde.op rho^+, t, epsilon tilde.op cal(N)(0, I))
-    ||g_theta ("sg"(y - eta dot overline(t)alpha_t dot delta_t (y_t))) - x||^2
+  & EE_(x tilde.op rho^+)
+    ||f_phi (x) - "sg"(y - eta dot hat(delta) (y))||^2 \
+  & EE_(x tilde.op rho^+)
+    ||g_theta ("sg"(y - eta dot hat(delta) (y))) - x||^2
 $
-where $y := "sg"(f_phi(x))$ and $y_t := overline(t) y + t epsilon$, and $alpha_t$ is bulk-KL weighting.
+where $y := "sg"(f_phi (x))$ and $alpha_t$ is bulk-KL weighting.
 
 
 == Theory
 
-=== Chart manifold reduces sample-KL to latent-KL
+=== DPI decomposition and chart manifold
 
-Fix $(f_phi, g_theta) in cal(M)$. The data-side identity implies that $f_phi$ is injective on the data support: if $f_phi (x_1) = f_phi (x_2)$ with $x_1, x_2 in "supp"(rho^+)$ then
+Before imposing chart constraints, the sample-space forward KL decomposes along the encoder channel by the #link("https://nlyu1.github.io/classical-info-theory/kullback-leibler-divergence.html#chain-rule-dpi")[chain rule / DPI]:
 $
-  x_1 = (g_theta compose f_phi)(x_1) = (g_theta compose f_phi)(x_2) = x_2
+  D(rho^+ || rho^-)
+  = D(sigma^+ || sigma^-)
+  + EE_(y tilde.op sigma^+) D(P_(rho^+ | y) || P_(rho^- | y))
 $
-The prior-side identity similarly makes $f_phi$ injective on the model support, and also gives
-$
-  sigma^- = f_(phi\#) rho^- = (f_phi compose g_theta)_(\#) nu = nu
-$
-Therefore pushing both sample distributions through the injective encoder preserves KL:
+The first term is the latent-space forward KL, and the residual term measures how much information the encoder discards about the sample-space distinction between data and model. Fix $(f_phi, g_theta) in cal(M)$. The data-side identity implies that $f_phi$ is injective on the data support, upon which the residual term vanishes
 $
   D(rho^+ || rho^-)
   = D(f_(phi\#) rho^+ || f_(phi\#) rho^-)
   = D(sigma^+ || sigma^-)
   = D(sigma^+ || nu)
 $
-So #blue[on the chart manifold, sample-space MLE is exactly latent-space Gaussianization]. The DPI residual disappears because the encoder is information-lossless on the relevant supports.
+So #blue[on the chart manifold, sample-space MLE is exactly latent-space Gaussianization]. Equivalently, the DPI residual vanishes because the encoder is information-lossless on the relevant supports.
 
-=== Noise spectrum and critic
+=== Bulk-KL weighting
 
 Define the noised data latent process by
 $
@@ -126,58 +125,109 @@ $
   nabla log sigma^-_t (y_t) = - y_t / (overline(t)^2 + t^2)
 $
 
-Now recall from #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#weighted-bulk-kl")[part 3] that a free-form score-difference weighting induces a corresponding weighted bulk-KL. Write
+The exact MLE target is the endpoint forward KL $D(sigma^+ || sigma^-) = D(sigma^+ || nu)$. More generally, we choose a bulk-KL weighting and define
 $
-  cal(B)_alpha (sigma^+)
-  := EE_(t tilde.op "Unif"[0, 1]) [
-    alpha_t EE_(y_t tilde.op sigma_t^+) ||nabla log sigma^+_t (y_t) - nabla log sigma^-_t (y_t)||^2
-  ]
+  cal(K)_alpha (sigma^+)
+  := integral
+  alpha_t D(sigma_t^+ || sigma_t^-)
+  dif t
 $
-The exact MLE choice $alpha_t = t slash overline(t)$ collapses this spectrum back to the endpoint KL $D(sigma^+ || nu)$. Ordinary uniform-in-time velocity matching corresponds to a bulk-KL weighting proportional to $1 / overline(t)^2$. We'll keep the schedule $alpha_t$ free, because the chart-transport update can inherit any desired noise-spectrum weighting.
+This is the population-objective whose Wasserstein gradient defines the latent field we want to descend. Otto calculus identifies the corresponding Wasserstein gradient
+$
+  ["grad"_(W, sigma^+) cal(K)_alpha (sigma^+)](y) & = integral alpha_t overline(t) dot EE_(y_t tilde sigma_t^+(dot | y)) ["grad"_(W, sigma_t^+) D(sigma_t^+ || sigma_t^-)]_(y_t) \
+  & = integral alpha_t overline(t) dot EE_(y_t tilde sigma_t^+(dot | y)) [nabla log sigma_t^+ - nabla log sigma_t^-]_(y_t) \
+  &:= -delta(y)
+$
+This is the clean-latent Wasserstein gradient direction of the latent bulk-KL objective.
 
-Only the data-side score must be estimated. We use a separate critic $s_psi$ trained on noised data latents:
+Note that the flowing measure matters. In most one-step generative modeling setups, the flowing measure is the model distribution and the score-difference field is sampled under the model measure, giving reverse-KL behavior #footnote[#link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#gaussian-kernel-smoothing-implements-reverse-kl")[Reverse-KL drifting] and #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#implementing-forward-kl")[forward-KL via density-ratio reweighting].]. Here the flowing measure is the encoded data latent, so the same score difference appears as the forward-KL Wasserstein gradient of the first argument and must be sampled under $y_t tilde.op sigma_t^+$. Sampling instead under $sigma_t^-$ would optimize the wrong functional.
+
+Weighted score matching is just an equivalent representation of this bulk objective. Recall from #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#weighted-bulk-kl")[part 3] that if $a_t$ weights the score-difference integral and $w_t := overline(t) slash t dot a_t$, then
 $
-  cal(L)_"critic" (psi; phi)
+  EE_t [a_t EE_(y_t tilde.op sigma_t^+) ||delta_t (y_t)||^2]
+  = - w_t D(sigma_t^+ || sigma_t^-)|_0^1
+  + EE_t [dot(w)_t D(sigma_t^+ || sigma_t^-)]
+$
+The exact MLE choice is the exceptional boundary case $a_t = t slash overline(t)$, which collapses back to $D(sigma^+ || nu)$. #blue[Ordinary uniform-in-time velocity matching corresponds instead to the bulk-KL weighting $alpha_t = 1 slash overline(t)^2$]. While $alpha_t$ could be kept free w.l.o.g, we canonically choose $alpha_t=(1-t)^(-2)$ corresponding to the  bulk-KL objective of uniform velocity flow-matching.
+
+=== Score and transport field estimation
+Only the data-side score must be estimated. We parameterize score via a noise predictor $epsilon_psi$ on noised data latents. We use $f_phi$ to sample $y tilde.op sigma^+$ and minimize the score critic loss:
+$
+  cal(L)_"critic" (psi)
   := EE_(t tilde.op "Unif"[0, 1], x tilde.op rho^+, epsilon tilde.op cal(N)(0, I))
-  ||s_psi (y_t, t) - epsilon||^2,
+  ||epsilon_psi (y_t, t) - epsilon||^2,
   quad
   y_t := overline(t) y + t epsilon,
   quad
   y := "sg"(f_phi (x))
 $
-Its implied score estimate is
+Its #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-3-diffusion/#flow-matching-in-practice")[implied score estimate] is
 $
-  s_psi (y_t, t) := - (s_psi (y_t, t)) / t
+  hat(s)_psi (y_t, t) := - (epsilon_psi (y_t, t)) / t
 $
-so the sampled score-difference field is
+It remains to estimate $delta(y) = -["grad"_(W, sigma^+) cal(K)_alpha (sigma^+)](y)$:
 $
-  delta_t (y_t) := s_psi (y_t, t) - nabla log sigma^-_t (y_t)
+  delta(y)
+  & = integral alpha_t overline(t) dot EE_(y_t tilde sigma_t^+(dot | y)) [nabla log sigma_t^+ - nabla log sigma_t^-]_(y_t)
 $
+Using our score critic, the functional approximation is
+$
+  hat(delta) (y) & := EE_t [1/(1-t) EE_(y_t | y) [ nabla log sigma_t^-(y_t) + (epsilon_psi (y_t, t)) / t]]
+$ <eq-hat-delta>
 
 === Projected Wasserstein descent on charts
 
-At each fixed $t$, the Wasserstein gradient of $D(sigma_t^+ || sigma_t^-)$ with respect to the flowing first argument $sigma_t^+$ is precisely the score difference $delta_t (y_t)$. So latent descent follows $-delta_t (y_t)$.
-
-However, our trainable object is not the free latent distribution; it is the chart pair $(f_phi, g_theta)$ constrained to lie on $cal(M)$. Since $y_t = overline(t) y + t epsilon$, pulling the noised-latent descent back to the clean latent gives
-$
-  nabla_y = overline(t) nabla_(y_t)
-  quad => quad
-  "clean-latent descent" = - overline(t) delta_t (y_t)
-$
-Thus a sampled latent target is
+Our trainable object is not the free latent distribution; it is the chart pair $(f_phi, g_theta)$ constrained to lie on $cal(M)$. At the chart-transport level, define the latent target
 $
   tilde(y)
-  := y - eta alpha_t overline(t) dot delta_t (y_t),
+  := y + eta hat(delta) (y),
   quad
-  y := "sg"(f_phi (x)),
-  quad
-  y_t := overline(t) y + t epsilon
+  y := "sg"(f_phi (x))
 $
-This ambient Wasserstein step will generally leave the chart manifold, so we update the chart pair by fitting to the drifted latent target while also enforcing the two manifold constraints. This is our projection-like descent on $cal(M)$:
+This ambient Wasserstein step will leave the chart manifold, so we update the chart pair by fitting to the transported latent target while also enforcing the two manifold constraints.
+
+=== Loss catalog
+
+The full optimization protocol consists of five losses, using $hat(delta)(y)$ from @eq-hat-delta:
 $
-         cal(L)_"cycle"^+ (theta, phi) & := EE_(x tilde.op rho^+) ||(g_theta compose f_phi)(x) - x||^2 \
-         cal(L)_"cycle"^- (theta, phi) & := EE_(z tilde.op nu) ||(f_phi compose g_theta)(z) - z||^2 \
-  cal(L)_"chart-enc" (phi; theta, psi) & := EE_(x, t, epsilon) ||f_phi(x) - "sg"(tilde(y))||^2 \
-  cal(L)_"chart-dec" (theta; phi, psi) & := EE_(x, t, epsilon) ||g_theta ("sg"(tilde(y))) - x||^2
+  cal(L)_"cycle"^+ (theta, phi) & := EE_(x tilde.op rho^+) ||(g_theta compose f_phi)(x) - x||^2 \
+  cal(L)_"cycle"^- (theta, phi) & := EE_(z tilde.op nu) ||(f_phi compose g_theta)(z) - z||^2 \
+          cal(L)_"critic" (psi) & := EE_(t, epsilon, x tilde.op rho^+)
+                                  ||epsilon_psi (y_t, t) - epsilon||^2,
+                                  quad
+                                  y_t := overline(t) "sg"(f_phi (x)) + t epsilon \
+             cal(L)_"enc" (phi) & := EE_(x tilde.op rho^+) ||f_phi (x) - tilde(y)_x||^2 \
+           cal(L)_"dec" (theta) & := EE_(x tilde.op rho^+) ||g_theta (tilde(y)_x) - x||^2
 $
-The encoder loss moves the data latent in the projected Wasserstein descent direction. The decoder loss makes the same drifted latent continue to decode to the original data sample. The cycle losses keep the pair on the chart manifold so that the latent objective continues to equal the sample-space MLE objective.
+where $tilde(y)_x = "sg"(y + eta dot hat(delta) (y))$, and $y := "sg"(f_phi (x))$.
+
+== Implementation details
+
+In this section, we outline potentially important implementation choices that are anticipated by the theory.
+
+=== Two-time updates
+
+Chart transport is contingent upon a high-quality critic. If the critic is biased, the $nabla log sigma_t^-$ term still analytically provides model-side potential, but the data-side dispersion will be biased. Combined with the fact that any changes to the chart induces non-stationarity in the critic _data distribution_ as well as _target_, we need to:
+
+1. Start by enforcing $cal(L)_"cycle"^plus.minus$ to end up in a stable point on the manifold before training $cal(L)_"critic"$.
+2. One update to the chart should be followed by several updates to the critic.
+
+=== Lagrangian constraints (optional)
+
+Our losses can be grouped into two categories: _objectives_ versus _constraints_. Of these, $cal(L)_"cycle"^plus.minus$ have clean interpretation as constraints, so it feels natural to parameterize them as such instead of choosing loss weightings (which is still equally valid). A principled starting place is pretraining an autoencoder with minimal prior-anchoring (e.g. mean-zero, minor latent norm penalty), recording the deviations, then use augmented Lagrangian with "budget" being some scalar multiple (e.g. 2) of the stable reconstruction losses.
+
+=== Transport field estimate
+
+Chart updates are expensive because they destabilize the critic. To this end, we want the field estimate to be low-variance. Recalling
+$
+  hat(delta) (y) & := EE_t [1/(1-t) EE_(y_t | y) [ nabla log sigma_t^-(y_t) + (epsilon_psi (y_t, t)) / t]]
+$
+We can consider three optimizations:
+
+1. Use a pre-specified noise-spectrum time-grid $t_0, ..., t_m$ to approximate the integral.
+2. Use independent $epsilon$ for each sample and timestep.
+3. Evaluate for antithetic pairs $plus.minus epsilon$
+
+=== Prior symmetry-breaking
+
+Naive i.i.d. Gaussian prior has continuous rotational symmetry.
