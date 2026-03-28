@@ -1,7 +1,24 @@
 from __future__ import annotations
 
+from torch import optim
+import torch.nn as nn
+
 from src.config.base import BaseConfig
 from src.model.base import ModelConfig
+
+
+class ChartTransportModel(nn.Module):
+    def __init__(
+        self,
+        *,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        critic: nn.Module,
+    ) -> None:
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.critic = critic
 
 
 class ChartTransportModelConfig(BaseConfig):
@@ -20,5 +37,36 @@ class ChartTransportModelConfig(BaseConfig):
     critic_lr: float
     """Critic learning rate."""
 
+    grad_clip_norm: float
+    """Gradient clipping norm applied to the bundled optimizer."""
 
-__all__ = ["ChartTransportModelConfig"]
+    def get_model(self) -> ChartTransportModel:
+        return ChartTransportModel(
+            encoder=self.encoder.get_model(),
+            decoder=self.decoder.get_model(),
+            critic=self.critic.get_model(),
+        )
+
+    def get_optimizer(
+        self,
+        *,
+        model: ChartTransportModel,
+    ) -> optim.Optimizer:
+        return optim.AdamW(
+            params=[
+                {
+                    "params": [
+                        *model.encoder.parameters(),
+                        *model.decoder.parameters(),
+                    ],
+                    "lr": self.chart_lr,
+                },
+                {
+                    "params": list(model.critic.parameters()),
+                    "lr": self.critic_lr,
+                },
+            ],
+        )
+
+
+__all__ = ["ChartTransportModel", "ChartTransportModelConfig"]

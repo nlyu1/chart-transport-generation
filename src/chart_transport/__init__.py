@@ -1,1 +1,9 @@
-__all__ = ["base", "constraint", "field", "loss", "model"]
+__all__ = [
+    "aux_loss",
+    "base",
+    "constraint",
+    "field",
+    "model",
+    "scheduling",
+    "transport_loss",
+]

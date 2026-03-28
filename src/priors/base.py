@@ -4,24 +4,16 @@ import math
 from abc import ABC, abstractmethod
 
 from jaxtyping import Float
-from pydantic import ConfigDict
 from torch import Tensor
 
 from src.config.base import BaseConfig
 
 
 class BasePriorConfig(BaseConfig, ABC):
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        populate_by_name=True,
-        extra="forbid",
-        frozen=True,
-    )
+    latent_shape: list[int]
 
-    data_shape: list[int]
-
-    def data_numel(self) -> int:
-        return math.prod(self.data_shape)
+    def latent_numel(self) -> int:
+        return math.prod(self.latent_shape)
 
     @abstractmethod
     def sample(

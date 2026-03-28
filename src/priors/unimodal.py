@@ -15,16 +15,16 @@ class UnimodalGaussianPriorConfig(BasePriorConfig):
     def initialize(
         cls,
         *,
-        data_shape: list[int],
+        latent_shape: list[int],
     ) -> Self:
-        return cls(data_shape=data_shape)
+        return cls(latent_shape=latent_shape)
 
     def sample(
         self,
         *,
         batch_size: int,
     ) -> Float[Tensor, "batch ..."]:
-        return torch.randn(batch_size, *self.data_shape)
+        return torch.randn(batch_size, *self.latent_shape)
 
     def log_likelihood(
         self,
@@ -33,7 +33,7 @@ class UnimodalGaussianPriorConfig(BasePriorConfig):
         flattened_samples = samples.reshape(samples.shape[0], -1)
         return -0.5 * (
             flattened_samples.square().sum(dim=1)
-            + self.data_numel() * math.log(2.0 * math.pi)
+            + self.latent_numel() * math.log(2.0 * math.pi)
         )
 
     def analytic_score(

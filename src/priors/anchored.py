@@ -18,11 +18,11 @@ class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
     def initialize(
         cls,
         *,
-        data_shape: list[int],
+        latent_shape: list[int],
         precision: float,
     ) -> Self:
         return cls(
-            data_shape=data_shape,
+            latent_shape=latent_shape,
             precision=precision,
         )
 
@@ -62,7 +62,7 @@ class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
         *,
         batch_size: int,
     ) -> Float[Tensor, "batch ..."]:
-        sample_shape = (batch_size, *self.data_shape)
+        sample_shape = (batch_size, *self.latent_shape)
         narrow_probability = self.precision / (self.precision + 1.0)
         component_is_narrow = torch.rand(sample_shape) < narrow_probability
         component_variance = torch.where(

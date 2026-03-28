@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from src.chart_transport.constraint import ManifoldConstraintConfig
 from src.chart_transport.field import BaseKLWeightSchedule
 from src.config.base import BaseConfig
 
@@ -27,28 +26,8 @@ class TransportLossConfig(BaseConfig):
 
     decoder_transport_weight: float
     encoder_transport_weight: float
+    huber_delta: float
     """Weights for the transport losses."""
 
 
-class ChartTransportLossConfig(BaseConfig):
-    """
-    Specifies all the loss components:
-    1. manifold constraint: dual variable or loss weighting
-    2. transport: how to estimate the transport field, and loss weighting
-    3. critic: just the weight of the loss
-    """
-
-    constraint_config: ManifoldConstraintConfig
-    """Constraint for manifold invariants."""
-
-    transport_config: TransportLossConfig
-    """Specification for transport-field estimation."""
-
-    critic_loss_weight: float
-    """Weight of the overall loss."""
-
-    update_chart_every_n_critic_steps: int
-    """Potentially update the critic many steps before updating the chart."""
-
-
-__all__ = ["TransportLossConfig", "ChartTransportLossConfig"]
+__all__ = ["TransportLossConfig"]
