@@ -21,6 +21,9 @@ class TransportLossConfig(BaseConfig):
     noise-spectrum time samples, with stratified uniform sampling within each bin.
     """
 
+    t_range: tuple[float, float]
+    """Closed training/estimation interval for transport times."""
+
     antipodal_estimate: bool
     """Whether to use an antipodal estimate for the field."""
 

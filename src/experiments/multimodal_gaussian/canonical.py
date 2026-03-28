@@ -33,7 +33,7 @@ def get_canonical_chart_transport_configs(
     constraint_method = LagrangianConstraintConfig(
         data_constraint_budget=0.01,
         prior_constraint_budget=0.01,
-        dual_variable_lr=1e-3,
+        dual_variable_lr=5e-3,
     )
     constraint_config = ManifoldConstraintConfig(
         huber_delta=2.0,
@@ -48,6 +48,7 @@ def get_canonical_chart_transport_configs(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
         transport_step_size=0.1,
         num_time_samples=8,
+        t_range=(0.03, 0.95),
         antipodal_estimate=True,
         decoder_transport_weight=1.0,
         encoder_transport_weight=1.0,
@@ -65,7 +66,7 @@ def get_canonical_chart_transport_configs(
     )
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=1000,
-        pretrain_critic_n_steps=2000,
+        pretrain_critic_n_steps=1000,
         update_chart_every_n_critic_steps=1,
     )
 

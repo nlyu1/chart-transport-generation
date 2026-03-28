@@ -192,10 +192,8 @@ def _set_child_copy(value: Any, token: PathToken, child_value: Any, *, path: str
             raise KeyError(
                 f"Field {token!r} not found in {type(value).__name__} for path {path!r}"
             )
-        data = value.model_dump(mode="python", round_trip=True)
-        data[token] = child_value
         try:
-            return type(value).model_validate(data, by_name=True)
+            return value.model_copy(update={token: child_value})
         except ValidationError as e:
             raise ValueError(f"Invalid replacement at {path!r}: {e}") from e
 
