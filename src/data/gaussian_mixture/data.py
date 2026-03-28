@@ -81,6 +81,19 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         x_hd = x_hd.to(device=self.projection.device, dtype=self.projection.dtype)
         return (x_hd - self.offset_vector()) @ self.projection
 
+    def decompose_projection(
+        self,
+        x_hd: Float[Tensor, "batch ambient_dimension"],
+    ) -> tuple[
+        Float[Tensor, "batch 2"],
+        Float[Tensor, "batch ambient_dimension"],
+        Float[Tensor, "batch ambient_dimension"],
+    ]:
+        projected_2d = self.project(x_hd)
+        in_plane = self.embed(projected_2d)
+        off_plane = x_hd.to(device=in_plane.device, dtype=in_plane.dtype) - in_plane
+        return projected_2d, in_plane, off_plane
+
     def mode_centers(self) -> Float[Tensor, "num_modes ambient_dimension"]:
         return self.embed(self.mode_centers_2d())
 
