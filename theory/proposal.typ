@@ -20,7 +20,7 @@ The main mathematical tools are #link("https://snakamoto404.github.io/blogs/mach
 
 == Interpretation of drifting; challenges
 
-We have shown in #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#gaussian-kernel-smoothing-implements-reverse-kl")[these notes] that drifting implements Wasserstein gradient descent on the reverse-KL divergence $D(rho_"model" || rho_"data")$ using kernel density estimates (KDE) of the model and data densities. The drifting field at each sample is the Gaussian kernel-estimate of score difference between data and model distributions at that point#footnote[#link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#ex-otto-reverse-kl")[Applying Otto's theorem to reverse KL] shows that the score-difference field on sample space is the Wasserstein gradient of reverse KL.]. This perspective suggests the following challenges with existing drifting methods:
+We have shown in #link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#gaussian-kernel-smoothing-implements-reverse-kl")[these notes] that drifting implements Wasserstein gradient descent on the reverse-KL divergence $D(rho_"model" || rho_"data")$ using kernel density estimates (KDE) of the model and data densities. The drifting field is the Gaussian kernel-estimate of score difference between data and model distributions at that point#footnote[#link("https://snakamoto404.github.io/blogs/machine-learning/ot-generative-2-drifting-models/#ex-otto-reverse-kl")[Applying Otto's theorem to reverse KL] shows that the score-difference field on sample space is the Wasserstein gradient of reverse KL.]. This perspective suggests the following challenges with existing drifting methods:
 
 1. *Gaussian KDE variance scales with data dimension*: this is one possible explanation for why ImageNet drifting does not work without a good pretrained encoder.
 2. *KL objective is stiff*: KL blows up when supports don't overlap. When data and model distributions don't overlap, drifting fails because the fundamental Wasserstein-functional objective blows up, _even if density estimates were perfect_. This is another possible explanation for why drifting struggles to natively scale to high dimensions.
@@ -72,7 +72,7 @@ $
 
 We use #blue[a separate noise critic $epsilon_psi$ to learn the score $nabla log sigma^+_t (y_t)$ of the noised data latent]. The model-side score is analytic, so only the data-side score must be learned. The latent score difference
 $
-  delta_t (y_t) := nabla log sigma^+_t (y_t) - nabla log sigma^-_t (y_t)
+  nabla log sigma^+_t (y_t) - nabla log sigma^-_t (y_t)
 $
 is the per-time forward-KL $D(sigma_t^+ || sigma_t^-)$ Wasserstein gradient with respect to the flowing data latent. We can use this to estimate the clean-latent transport field $delta(y)$ and update the chart pair.
 
@@ -84,9 +84,9 @@ The detailed losses which we'll proceed to developing all serve the following ob
 3. Transport the chart along the clean-latent field $delta (y)$ while remaining on $cal(M)$. In practice we work with an estimator $hat(delta) (y) approx delta (y)$ and fit the chart to the induced latent step:
 $
   & EE_(x tilde.op rho^+)
-    ||f_phi (x) - "sg"(y - eta dot hat(delta) (y))||^2 \
+    ||f_phi (x) - "sg"(y + eta dot hat(delta) (y))||^2 \
   & EE_(x tilde.op rho^+)
-    ||g_theta ("sg"(y - eta dot hat(delta) (y))) - x||^2
+    ||g_theta ("sg"(y + eta dot hat(delta) (y))) - x||^2
 $
 where $y := "sg"(f_phi (x))$ and $alpha_t$ is bulk-KL weighting.
 
@@ -125,7 +125,7 @@ $
   nabla log sigma^-_t (y_t) = - y_t / (overline(t)^2 + t^2)
 $
 
-The exact MLE target is the endpoint forward KL $D(sigma^+ || sigma^-) = D(sigma^+ || nu)$. More generally, we choose a bulk-KL weighting and define
+The MLE target is the endpoint forward KL $D(sigma^+ || sigma^-) = D(sigma^+ || nu)$. More generally, we choose a bulk-KL weighting and define
 $
   cal(K)_alpha (sigma^+)
   := integral
@@ -224,10 +224,155 @@ $
 $
 We can consider three optimizations:
 
-1. Use a pre-specified noise-spectrum time-grid $t_0, ..., t_m$ to approximate the integral. Also, the model-term expectation can be analytically integrated.
+1. Use a pre-specified noise-spectrum time-grid $t_0, ..., t_m$ to approximate the integral. Also, with the factorized prior below the model-term expectation reduces to a shared one-dimensional function of $(y_i, t)$ that can be pre-tabulated.
 2. Use independent $epsilon$ for each sample and timestep.
 3. Evaluate for antithetic pairs $plus.minus epsilon$.
 
 === Prior symmetry-breaking
 
-Naive i.i.d. Gaussian prior has continuous rotational symmetry.
+Naive i.i.d. Gaussian prior has continuous rotational symmetry. Any continuous symmetry of the prior aggravates non-stationarity of the chart because the encoder-decoder can freely adapt (could be driven by random sampling noise) the chart along the gauge degree of freedom. To scalably address this problem in high dimensions, we can replace the spherical Gaussian reference prior by a symmetry-broken factorized prior.
+
+==== Factorized Gaussian scale-mixture
+
+We replace the isotropic Gaussian prior by an i.i.d. product of a two-scale Gaussian mixture. Let $lambda >= 1$ denote the precision of the low-variance component, and write $q_v (u)$
+for the one-dimensional Gaussian density with variance $v$. Define
+$
+  p_lambda (u)
+  := lambda/(lambda + 1) q_(1 slash lambda) (u)
+  + 1/(lambda + 1) q_lambda (u)
+$
+and the factorized latent prior
+$
+  nu_lambda (y)
+  := product_(i=1)^d p_lambda (y_i)
+$
+This family has a single hyperparameter. The narrow component has variance $lambda^(-1)$. The wide component is canonically fixed to variance $lambda$, and the mixture ratio $lambda:1$ is the unique symmetric choice that preserves unit variance:
+$
+  EE[Y] = 0,
+  quad
+  EE[Y^2]
+  = lambda/(lambda + 1) lambda^(-1)
+  + 1/(lambda + 1) lambda
+  = 1
+$
+
+==== Analytic scores under the independent-coupling process
+
+Let the model latent follow the same independent-coupling noising process
+$
+  y_t = overline(t) y_0 + t epsilon,
+  quad
+  y_0 tilde.op nu_lambda,
+  quad
+  epsilon tilde.op cal(N)(0, I)
+$
+Because $nu_lambda$ factorizes, each coordinate remains a two-scale Gaussian mixture after noising. Define the two noised component variances
+$
+  v_-(t) := t^2 + overline(t)^2 lambda^(-1),
+  quad
+  v_+(t) := t^2 + overline(t)^2 lambda
+$
+Then the one-dimensional noised marginal is
+$
+  p_(lambda, t)(u)
+  := lambda/(lambda + 1) q_(v_-(t))(u)
+  + 1/(lambda + 1) q_(v_+(t))(u)
+$
+and the full noised prior remains factorized:
+Differentiating the Gaussian kernel gives $partial_u q_v(u) = -u q_v(u) / v$, hence the one-dimensional score is
+$
+  s_(lambda, t)(u)
+  := partial_u log p_(lambda, t)(u)
+  = -u
+  (lambda v_-(t)^(-1) q_(v_-(t))(u) + v_+(t)^(-1) q_(v_+(t))(u))
+  /
+  (lambda q_(v_-(t))(u) + q_(v_+(t))(u))
+$
+Equivalently, if
+$
+  r_-(u, t)
+  := lambda q_(v_-(t))(u) / (lambda q_(v_-(t))(u) + q_(v_+(t))(u)),
+  quad
+  r_+(u, t) := 1 - r_-(u, t)
+$
+are the posterior responsibilities of the narrow and wide component, then
+$
+  s_(lambda, t)(u)
+  = -u (r_-(u, t) / v_-(t) + r_+(u, t) / v_+(t))
+$
+The full model-side score is coordinatewise:
+$
+  nabla log nu_(lambda, t)(y_t)
+  = (s_(lambda, t)(y_(t, 1)), ..., s_(lambda, t)(y_(t, d)))
+$
+Conditioning on the clean latent $y$, the model term entering @eq-hat-delta reduces to a shared one-dimensional function
+$
+  F_(lambda, t)(u)
+  := EE_(epsilon tilde.op cal(N)(0, 1))
+  [s_(lambda, t)(overline(t) u + t epsilon)]
+$
+applied coordinatewise:
+$
+  EE_(y_t tilde.op nu_(lambda, t)(dot | y))
+  [nabla log nu_(lambda, t)(y_t)]
+  = (F_(lambda, t)(y_1), ..., F_(lambda, t)(y_d))
+$
+The prior is non-Gaussian, but the full model-side contribution still reduces to evaluating one odd scalar function on each coordinate.
+
+==== KL-curvature to rotation
+
+We quantify rotational anchoring by the KL-curvature of axis-aligned rotation at $theta = 0$.
+
+Fix one noise level $t$, and let $X_1, X_2$ be i.i.d. with marginal $p_(lambda, t)$. Rotate the pair by angle $theta$:
+$
+  X_1^theta := cos theta X_1 + sin theta X_2,
+  quad
+  X_2^theta := - sin theta X_1 + cos theta X_2
+$
+Let $q_theta$ denote the density of $(X_1^theta, X_2^theta)$, and define the exact pairwise KL along this rotation orbit
+$
+  cal(K)_(lambda, t)(theta)
+  := D(q_theta || q_0)
+$
+Because $theta = 0$ is the aligned point, $cal(K)_(lambda, t)(0) = 0$ and the first nontrivial term is the curvature
+$
+  kappa_(lambda, t)
+  := dif^2/(dif theta^2) cal(K)_(lambda, t)(theta)
+$
+Writing $s := s_(lambda, t)$, direct differentiation of $q_theta (x_1, x_2) = p_(lambda, t)(cos theta x_1 - sin theta x_2) p_(lambda, t)(sin theta x_1 + cos theta x_2)$ gives the score of the rotation family
+$
+  dot(ell)(x_1, x_2)
+  := partial_theta log q_theta(x_1, x_2)
+  = x_1 s(x_2) - x_2 s(x_1)
+$
+At the aligned point, the KL Hessian is the Fisher information of this one-parameter family:
+$
+  kappa_(lambda, t)
+  = EE[dot(ell)(X_1, X_2)^2]
+  = EE[(X_1 s(X_2) - X_2 s(X_1))^2]
+$
+Using independence of $X_1, X_2$,
+$
+  kappa_(lambda, t)
+  = 2 EE[X^2] EE[s(X)^2] - 2 EE[X s(X)]^2
+$
+Now $EE[X^2] = v_t := overline(t)^2 + t^2$, while integration by parts gives
+$
+  EE[X s(X)]
+  = integral x partial_x p_(lambda, t)(x) dif x
+  = -1
+$
+Therefore
+$
+  kappa_(lambda, t)
+  = 2 (v_t I(p_(lambda, t)) - 1),
+  quad
+  I(p_(lambda, t)) := EE[s_(lambda, t)(X)^2]
+$
+At $t = 0$, we have $v_0 = 1$, so the clean-prior rotational anchor is
+$
+  kappa_lambda
+  := kappa_(lambda, 0)
+  = 2 (I(p_lambda) - 1)
+$
+By the one-dimensional Fisher information inequality, $I(p_lambda) >= 1$ with equality iff $p_lambda$ is Gaussian. Hence $kappa_lambda > 0$ for every $lambda != 1$: the adopted prior eliminates all continuous rotational zero modes. Under noising, $p_(lambda, t)$ continuously approaches the Gaussian as $t -> 1$, so $kappa_(lambda, t)$ decays toward $0$ at high noise but remains strictly positive on every finite-noise slice whenever $lambda != 1$.

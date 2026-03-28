@@ -1,0 +1,36 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": false,
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/.ignore": true,
+    "**/.ipynb_checkpoints": true,
+    "**/.pytest_cache": true,
+    "**/.python-version": true,
+    "**/.ruff_cache": true,
+    "**/.uv-cache": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true
+  },
+  "search.exclude": {
+    "**/.ignore": true,
+    "**/.ipynb_checkpoints": true,
+    "**/.pytest_cache": true,
+    "**/.python-version": true,
+    "**/.ruff_cache": true,
+    "**/.uv-cache": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.egg-info": true
+  },
+  "files.watcherExclude": {
+    "**/.ipynb_checkpoints/**": true,
+    "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/.uv-cache/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "**/*.egg-info/**": true
+  }
+}

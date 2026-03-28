@@ -27,7 +27,7 @@ class SinusoidalTimeEmbedding(nn.Module):
 
     def forward(
         self,
-        t: Float[Tensor, "batch 1"],
+        t: Float[Tensor, "batch"],
     ) -> Float[Tensor, "batch embedding_dim"]:
         half_dim = self.embedding_dim // 2
         if half_dim == 0:
@@ -39,7 +39,7 @@ class SinusoidalTimeEmbedding(nn.Module):
             device=t.device,
             dtype=t.dtype,
         ).exp()
-        angles = (2.0 * math.pi * t) / lambdas.unsqueeze(0)
+        angles = (2.0 * math.pi * t.unsqueeze(-1)) / lambdas.unsqueeze(0)
         embedding = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
         if embedding.shape[-1] == self.embedding_dim:
             return embedding
@@ -70,7 +70,7 @@ class TimeConditioning(nn.Module):
 
     def forward(
         self,
-        t: Float[Tensor, "batch 1"],
+        t: Float[Tensor, "batch"],
     ) -> Float[Tensor, "batch output_dim"]:
         return self.projection(self.embedding(t))
 

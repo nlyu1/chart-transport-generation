@@ -191,7 +191,7 @@ class StackedResidualMLP(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "batch input_dim"],
-        t: Float[Tensor, "batch 1"] | None = None,
+        t: Float[Tensor, "batch"] | None = None,
     ) -> Float[Tensor, "batch output_dim"]:
         embedding = None
         if self.time_conditioning is not None:

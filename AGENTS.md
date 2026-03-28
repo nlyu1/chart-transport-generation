@@ -15,8 +15,16 @@
 - Prefer strict failure to permissive try/except
 - Do not write over-defensive validation which clutter code.
 - Strongly prefer Jaxtyping tensors. Prefer useful typing and faithful usage over over-defensive checks.
+- We strongly prefer empty "__init__.py" and use full-path imports.
+- **Do not** write backward-compatible alias / patches when making changes. Make change as if it's implemented for the first time, and it suffices to explicitly inform me of breaking changes
 
 # Testing
 
 - This is a research repo, so testing is not needed.
 - You are encouraged to snippet-test your code by "uv run python -c", or putting one-time tests in /tmp.
+
+# Project scope
+
+- Read `theory/proposal.typ` for theoretical specifications of the model. JUST DO IT.
+- We're building a highly structured, modular, and well-maintained research codebase for generative modeling experiments.
+- Experiments are fully specified by stateless, immutable, composable configs (pydantic classes), which are instantiated to stateful objects during runtime.
