@@ -40,8 +40,8 @@ def get_canonical_chart_transport_configs(
         constraint_method=constraint_method,
     )
     chart_pretrain_config = ChartPretrainConfig(
-        zero_mean_weight=1e-2,
-        latent_norm_weight=1e-2,
+        zero_mean_weight=0.0,
+        latent_norm_weight=1e-4,
         latent_norm_delta=1.5 * prior_precision,
     )
     transport_config = TransportLossConfig(
@@ -65,9 +65,9 @@ def get_canonical_chart_transport_configs(
         critic_config=critic_config,
     )
     scheduling_config = ChartTransportSchedulingConfig(
-        pretrain_chart_n_steps=1000,
-        pretrain_critic_n_steps=1000,
-        update_chart_every_n_critic_steps=3,
+        pretrain_chart_n_steps=2000,
+        pretrain_critic_n_steps=2000,
+        update_chart_every_n_critic_steps=5,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(

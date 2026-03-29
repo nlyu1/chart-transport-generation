@@ -17,7 +17,7 @@
 - Strongly prefer Jaxtyping tensors. Prefer useful typing and faithful usage over over-defensive checks.
 - We strongly prefer empty "__init__.py" and use full-path imports.
 - **Do not** write backward-compatible alias / patches when making changes. Make change as if it's implemented for the first time, and it suffices to explicitly inform me of breaking changes
-- Composable tasks should be delegated to subagents. Spawn gpt-5.4 high (not mini).
+- Composable tasks should be delegated to subagents. Spawn gpt-5.4 high, **not mini**.
 
 # Testing
 
