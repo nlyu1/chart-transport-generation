@@ -25,6 +25,13 @@ from src.experiments.multimodal_gaussian.critic_pretrain import (
     critic_pretrain_eval_step_,
     critic_pretrain_train_step_,
 )
+from src.experiments.multimodal_gaussian.integrated import (
+    integrated_,
+    integrated_constraint_repair_step_,
+    integrated_eval_step_,
+    integrated_train_step_,
+    integrated_transport_step_,
+)
 
 
 @dataclass(
@@ -95,6 +102,36 @@ class MultimodalTrainingRuntime:
         self,
     ) -> dict[str, float]:
         return critic_pretrain_(rt=self)
+
+    def _integrated_constraint_repair_step(
+        self,
+    ) -> dict[str, float]:
+        return integrated_constraint_repair_step_(rt=self)
+
+    def _integrated_transport_step(
+        self,
+    ) -> dict[str, float]:
+        return integrated_transport_step_(rt=self)
+
+    def _integrated_train_step(
+        self,
+    ) -> dict[str, float]:
+        return integrated_train_step_(rt=self)
+
+    def _integrated_eval_step(
+        self,
+        *,
+        step: int,
+    ) -> dict[str, float]:
+        return integrated_eval_step_(
+            rt=self,
+            step=step,
+        )
+
+    def integrated(
+        self,
+    ) -> dict[str, float]:
+        return integrated_(rt=self)
 
     @classmethod
     def initialize(

@@ -5,5 +5,6 @@ __all__ = [
     "field",
     "model",
     "scheduling",
+    "training",
     "transport_loss",
 ]

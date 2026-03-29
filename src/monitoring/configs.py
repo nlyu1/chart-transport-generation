@@ -106,6 +106,16 @@ class SamplingMonitorConfig(BaseMonitorComponentConfig):
     n_generated_samples: int
     n_data_samples_per_mode: int
 
+    def apply_to(
+        self,
+        *,
+        rt,
+        step: int,
+    ) -> dict[str, float]:
+        raise NotImplementedError(
+            "Sampling monitors must be implemented by experiment-specific subclasses"
+        )
+
 
 class ConditioningMonitorConfig(BaseMonitorComponentConfig):
     """

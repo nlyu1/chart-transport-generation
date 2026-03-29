@@ -15,13 +15,15 @@ from src.experiments.multimodal_gaussian.monitoring.config import MonitorConfig
 from src.experiments.multimodal_gaussian.monitoring.constraint import (
     GaussianConstraintMonitorConfig,
 )
+from src.experiments.multimodal_gaussian.monitoring.sampling import (
+    GaussianSamplingMonitorConfig,
+)
 from src.model.mlp import StackedResidualMLPConfig
 from src.model.time_conditioning import TimeConditioningConfig
 from src.monitoring.configs import (
     ConditioningMonitorConfig,
     CriticMonitorConfig,
     MonitorScheduleConfig,
-    SamplingMonitorConfig,
 )
 from src.priors.anchored import AnchoredGaussianScaleMixturePriorConfig
 
@@ -161,7 +163,7 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
             transport_grid_resolution=31,
             transport_num_time_samples=19,
         ),
-        sampling_monitor_config=SamplingMonitorConfig(
+        sampling_monitor_config=GaussianSamplingMonitorConfig(
             activate_on_steps=[],
             n_generated_samples=3000,
             n_data_samples_per_mode=1000,

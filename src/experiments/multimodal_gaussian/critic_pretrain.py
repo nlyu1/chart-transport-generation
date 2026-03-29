@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from tqdm.autonotebook import tqdm
 
+from src.chart_transport.training import sample_transport_times
 from src.experiments.multimodal_gaussian.chart_pretrain import (
     _format_metrics_summary,
     _log_wandb_scalars,
@@ -15,20 +16,6 @@ from src.experiments.multimodal_gaussian.chart_pretrain import (
 
 if TYPE_CHECKING:
     from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
-
-
-def _sample_transport_times(
-    *,
-    rt: "MultimodalTrainingRuntime",
-    batch_shape: tuple[int, ...],
-) -> torch.Tensor:
-    transport_config = rt.tc.chart_transport_config.loss_config.transport_config
-    t_min, t_max = transport_config.t_range
-    return t_min + (t_max - t_min) * torch.rand(
-        *batch_shape,
-        device=rt.device,
-        dtype=torch.float32,
-    )
 
 
 def _compute_critic_pretrain_loss(
@@ -45,8 +32,9 @@ def _compute_critic_pretrain_loss(
     with torch.no_grad():
         data_latents = encoder(data_batch)
 
-    t = _sample_transport_times(
-        rt=rt,
+    t = sample_transport_times(
+        transport_config=rt.tc.chart_transport_config.loss_config.transport_config,
+        device=rt.device,
         batch_shape=(data_latents.shape[0],),
     )
     eps = torch.randn_like(data_latents)
@@ -69,7 +57,12 @@ def critic_pretrain_train_step_(
     *,
     rt: "MultimodalTrainingRuntime",
 ) -> dict[str, float]:
+    encoder = rt.chart_transport_model.encoder
+    decoder = rt.chart_transport_model.decoder
     critic = rt.chart_transport_model.critic
+
+    encoder.eval()
+    decoder.eval()
     critic.train()
 
     rt.optimizer.zero_grad(set_to_none=True)
