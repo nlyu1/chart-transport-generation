@@ -18,12 +18,12 @@ from src.priors.anchored import AnchoredGaussianScaleMixturePriorConfig
 
 def get_canonical_chart_transport_configs(
     *,
+    latent_dimension: int,
     data_config: MultimodalGaussianDataConfig,
 ) -> ChartTransportConfig:
-    latent_dimension = 2
     prior_precision = 3.0
-    hidden_dimension = 256
-    time_embedding_dimension = 256
+    hidden_dimension = 768
+    time_embedding_dimension = 768
 
     prior_config = AnchoredGaussianScaleMixturePriorConfig.initialize(
         latent_shape=[latent_dimension],
@@ -31,8 +31,8 @@ def get_canonical_chart_transport_configs(
     )
 
     constraint_method = LagrangianConstraintConfig(
-        data_constraint_budget=0.01,
-        prior_constraint_budget=0.01,
+        data_constraint_budget=1e-2,
+        prior_constraint_budget=1e-2,
         dual_variable_lr=5e-3,
     )
     constraint_config = ManifoldConstraintConfig(
@@ -41,18 +41,18 @@ def get_canonical_chart_transport_configs(
     )
     chart_pretrain_config = ChartPretrainConfig(
         zero_mean_weight=1e-2,
-        softplus_weight=1e-2,
-        softplus_radius=1.5 * prior_precision,
+        latent_norm_weight=1e-2,
+        latent_norm_delta=1.5 * prior_precision,
     )
     transport_config = TransportLossConfig(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
         transport_step_size=0.1,
+        transport_step_cap=0.05,
         num_time_samples=8,
         t_range=(0.03, 0.95),
         antipodal_estimate=True,
         decoder_transport_weight=1.0,
         encoder_transport_weight=1.0,
-        huber_delta=2.0,
     )
     critic_config = CriticLossConfig(
         loss_weight=1.0,
@@ -67,12 +67,12 @@ def get_canonical_chart_transport_configs(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=1000,
         pretrain_critic_n_steps=1000,
-        update_chart_every_n_critic_steps=1,
+        update_chart_every_n_critic_steps=3,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(
         min_t_lambda=0.03,
-        max_t_lambda=0.99,
+        max_t_lambda=0.97,
         sinusoidal_dim=time_embedding_dimension,
         hidden_dim=hidden_dimension,
         output_dim=time_embedding_dimension,
@@ -83,6 +83,10 @@ def get_canonical_chart_transport_configs(
                 data_config.data_numel(),
                 hidden_dimension,
                 hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
                 latent_dimension,
             ],
         ),
@@ -91,12 +95,19 @@ def get_canonical_chart_transport_configs(
                 latent_dimension,
                 hidden_dimension,
                 hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
                 data_config.data_numel(),
             ],
         ),
         critic=StackedResidualMLPConfig.initialize(
             layer_dims=[
                 latent_dimension,
+                hidden_dimension,
+                hidden_dimension,
+                hidden_dimension,
                 hidden_dimension,
                 hidden_dimension,
                 latent_dimension,

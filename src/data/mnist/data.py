@@ -97,6 +97,22 @@ class MNISTDataConfig(BaseDataConfig):
         )
         return self.samples[indices[sampled_offsets]]
 
+    def _slice_from_indices(
+        self,
+        *,
+        indices: Int[Tensor, "num_candidates"],
+        start_index: int,
+        batch_size: int,
+    ) -> Float[Tensor, "batch data_dim"]:
+        if start_index < 0:
+            raise ValueError("start_index must be non-negative")
+        stop_index = start_index + batch_size
+        if stop_index > indices.shape[0]:
+            raise ValueError(
+                f"requested [{start_index}, {stop_index}) exceeds class size {indices.shape[0]}"
+            )
+        return self.samples[indices[start_index:stop_index]]
+
     def sample_class(
         self,
         *,
@@ -110,6 +126,71 @@ class MNISTDataConfig(BaseDataConfig):
             batch_size=batch_size,
         )
 
+    def class_batch(
+        self,
+        *,
+        mode_id: int,
+        batch_size: int,
+        start_index: int,
+    ) -> Float[Tensor, "batch data_dim"]:
+        if mode_id < 0 or mode_id >= self.num_classes:
+            raise ValueError(f"mode_id must be in [0, {self.num_classes})")
+        return self._slice_from_indices(
+            indices=self.class_indices[mode_id],
+            start_index=start_index,
+            batch_size=batch_size,
+        )
+
+    def stratified_batch(
+        self,
+        *,
+        batch_size_per_class: int,
+    ) -> tuple[Float[Tensor, "batch data_dim"], Int[Tensor, "batch"]]:
+        samples = []
+        labels = []
+        for mode_id in range(self.num_classes):
+            samples.append(
+                self.sample_class(
+                    mode_id=mode_id,
+                    batch_size=batch_size_per_class,
+                )
+            )
+            labels.append(
+                torch.full(
+                    (batch_size_per_class,),
+                    fill_value=mode_id,
+                    device=self.labels.device,
+                    dtype=torch.long,
+                )
+            )
+        return torch.cat(samples, dim=0), torch.cat(labels, dim=0)
+
+    def stratified_class_batch(
+        self,
+        *,
+        batch_size_per_class: int,
+        start_index: int,
+    ) -> tuple[Float[Tensor, "batch data_dim"], Int[Tensor, "batch"]]:
+        samples = []
+        labels = []
+        for mode_id in range(self.num_classes):
+            samples.append(
+                self.class_batch(
+                    mode_id=mode_id,
+                    batch_size=batch_size_per_class,
+                    start_index=start_index,
+                )
+            )
+            labels.append(
+                torch.full(
+                    (batch_size_per_class,),
+                    fill_value=mode_id,
+                    device=self.labels.device,
+                    dtype=torch.long,
+                )
+            )
+        return torch.cat(samples, dim=0), torch.cat(labels, dim=0)
+
     def sample_unconditional(
         self,
         *,
@@ -121,6 +202,16 @@ class MNISTDataConfig(BaseDataConfig):
             device=self.samples.device,
         )
         return self.samples[sampled_indices]
+
+    def as_images(
+        self,
+        samples: Float[Tensor, "batch data_dim"],
+    ) -> Float[Tensor, "batch height width"]:
+        if samples.ndim != 2:
+            raise ValueError("samples must have shape [batch, data_dim]")
+        if samples.shape[-1] != MNIST_NUMEL:
+            raise ValueError("samples must have shape [batch, 784]")
+        return samples.reshape(samples.shape[0], MNIST_SIDE_LENGTH, MNIST_SIDE_LENGTH)
 
     def log_likelihood(
         self,

@@ -19,15 +19,15 @@ class ChartPretrainConfig(BaseConfig):
     we pretrain the chart (i.e. initialize to a point on the manifold) by:
     1. Data + prior reconstruction loss
     2. Weakly anchor by asking each sample's latent mean to be zero
-        and put softplus penalty on the latents.
+        and put a huber penalty on the latent norms.
 
-    Concretely, the softplus weight looks like, for each sample:
-    softplus_loss = softplus(sample norm - softplus radius)).
+    Concretely, the latent-norm penalty looks like, for each sample:
+    huber_loss(sample norm, 0; delta = latent_norm_delta).
     """
 
     zero_mean_weight: float
-    softplus_weight: float
-    softplus_radius: float
+    latent_norm_weight: float
+    latent_norm_delta: float
 
 
 __all__ = ["CriticLossConfig", "ChartPretrainConfig"]

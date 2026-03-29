@@ -15,6 +15,9 @@ class TransportLossConfig(BaseConfig):
     transport_step_size: float
     """Target transport is computed as transport_step_size * field."""
 
+    transport_step_cap: float
+    """Per-sample cap on the transported latent displacement norm."""
+
     num_time_samples: int
     """
     Approximate the actual transport-field integral across this many
@@ -29,7 +32,6 @@ class TransportLossConfig(BaseConfig):
 
     decoder_transport_weight: float
     encoder_transport_weight: float
-    huber_delta: float
     """Weights for the transport losses."""
 
 
