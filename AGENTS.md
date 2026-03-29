@@ -1,31 +1,34 @@
-# Background
+# Repository Guidelines
 
-- You're working in a uv library, always use `uv run python` for Python invocations.
-- Always use top-level bash instead of sandbox, requiring escalation as necessary.
-- When specifying a cuda device, it isn't sufficient to move model and data `to(device)`; wrap the whole context in `with torch.cuda.device(device), torch.device(device), torch.autocast(device_type=..., dtype=...)` (or TE equivalent); transformer engine MLP kernel breaks on float32.
-- Unless otherwise specified, always run training & benchmarking in bfloat16 or transformer engine fp8 (training default is Fabric precision `bf16-mixed` in `prometheus/python/prometheus/training/config.py`).
-- Unless otherwise specified, do not set default config values during development, and prefer keyword arguments
-- Unless otherwise specified, keep __init__.py optimal and only export submodules. Imports should clearly specify the full path.
+## Project Structure & Module Organization
+This repo is organized as a Cartesian product of three moving pieces:
 
-# Style
+- Common reusable tools in `src/`: `src/model/` for function approximators, `src/data/` for dataset access and configs, `src/priors/` for latent priors, `src/chart_transport/` for objectives and training utilities, and `src/monitoring/` for generative diagnostics.
+- Stateless method and experiment specification: immutable Pydantic config objects define architectures, losses, schedules, priors, and monitoring without hidden runtime state.
+- Stateful runtime instantiation in `src/experiments/`: experiment packages such as `src/experiments/mnist/` and `src/experiments/multimodal_gaussian/` turn configs into models, optimizers, Fabric state, and training loops.
+- Theory and intent live in `theory/`. Read `theory/proposal.typ` before changing objectives, priors, or transport logic.
+- Outputs belong in `artifacts/`; old code and notebooks belong in `archives/`.
 
-- Strongly prefer pydantic dataclasses and clear typing; disprefer "A | B" permissive type signatures. Do not use any `Type | None` field signatures.
-- Prefer keyword-only arguments; strongly dis-prefer "Type | None" patterns.
-- Unless absolutely needed, strongly disprefer default instance values.
-- Prefer strict failure to permissive try/except
-- Do not write over-defensive validation which clutter code.
-- Strongly prefer Jaxtyping tensors. Prefer useful typing and faithful usage over over-defensive checks.
-- We strongly prefer empty "__init__.py" and use full-path imports.
-- **Do not** write backward-compatible alias / patches when making changes. Make change as if it's implemented for the first time, and it suffices to explicitly inform me of breaking changes
-- Composable tasks should be delegated to subagents. Spawn gpt-5.4 high, **not mini**.
+## Build, Test, and Development Commands
+Always use `uv`.
 
-# Testing
+- `uv sync --dev`: install runtime and dev dependencies.
+- `uv run ruff check .`: lint the codebase.
+- `uv run python -c "import src.experiments.multimodal_gaussian.integrated as m; print(m.__file__)"`: trace implementation paths.
+- `uv run python -c "from src.experiments.multimodal_gaussian.canonical import get_canonical_chart_transport_configs"`: quick import smoke test.
 
-- This is a research repo, so testing is not needed.
-- You are encouraged to snippet-test your code by "uv run python -c", or putting one-time tests in /tmp.
+For debugging, prefer `uv run python -c ...` snippets or short one-off scripts in `/tmp`.
 
-# Project scope
+## GPU & Precision Usage
+Use GPU code deliberately. Moving tensors and modules with `.to(device)` is not enough; wrap execution in `torch.cuda.device(device)`, `torch.device(device)`, and `torch.autocast(device_type=..., dtype=torch.bfloat16)` contexts. Default training and benchmarking to bfloat16 rather than float32.
 
-- Read `theory/proposal.typ` for theoretical specifications of the model. JUST DO IT.
-- We're building a highly structured, modular, and well-maintained research codebase for generative modeling experiments.
-- Experiments are fully specified by stateless, immutable, composable configs (pydantic classes), which are instantiated to stateful objects during runtime.
+## Coding Style & Naming Conventions
+Use Python 3.12, 4-space indentation, full-path imports, and minimal `__init__.py` files. Prefer immutable Pydantic configs and `pydantic.dataclasses.dataclass(kw_only=True)` for runtime containers. Use keyword-only APIs, avoid permissive unions like `Type | None`, and prefer informative tensor typing, including Jaxtyping where useful.
+
+Prefer explicit failure over permissive branching or broad `try/except`. Prefer centralized canonical configs over hidden defaults scattered across modules; default instance values should be rare. When changing an API, make the clean breaking change instead of adding backward-compatible aliases or compatibility shims.
+
+## Testing Guidelines
+This is a research repo, so snippet validation is the default. Use focused `uv run python -c ...` checks to validate imports, shapes, and control flow. If you add tests, place them in `tests/` and name files `test_<feature>.py`.
+
+## Commit & Pull Request Guidelines
+Recent commits use subjects like `updates`; do not copy that style. Use short imperative subjects that name the subsystem, for example `Refine chart transport scheduling`. PRs should explain the experiment or module touched, list validation commands, call out breaking config changes, and include plots or screenshots when monitoring output changes.

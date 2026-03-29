@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from string import ascii_uppercase
 
 import plotly.graph_objects as go
 import torch
 from plotly.subplots import make_subplots
 
 from src.data.mnist.data import MNISTDataConfig
+from src.monitoring.critic import write_critic_monitor_artifacts
 from src.monitoring.utils import (
+    build_latent_grid,
     flatten_latents,
     latent_square_limits,
     project_latents_to_pca_space,
@@ -26,6 +29,50 @@ DIGIT_COLORS = (
     "#bcbd22",
     "#17becf",
 )
+
+
+def reconstruction_column_titles(
+    *,
+    examples_per_class: int,
+) -> list[str]:
+    if examples_per_class <= 0:
+        raise ValueError("examples_per_class must be positive")
+    if examples_per_class > len(ascii_uppercase):
+        raise ValueError(
+            f"examples_per_class must be at most {len(ascii_uppercase)} to label columns"
+        )
+    subplot_titles = []
+    for example_index in range(examples_per_class):
+        sample_label = ascii_uppercase[example_index]
+        subplot_titles.extend(
+            [
+                sample_label,
+                f"{sample_label} reconstruction",
+            ]
+        )
+    return subplot_titles
+
+
+def sample_constraint_monitor_batches(
+    *,
+    data_config: MNISTDataConfig,
+    reconstruction_examples_per_class: int,
+    latent_examples_per_class: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    reconstruction_samples, reconstruction_labels = data_config.stratified_class_batch(
+        batch_size_per_class=reconstruction_examples_per_class,
+        start_index=0,
+    )
+    latent_samples, latent_labels = data_config.stratified_class_batch(
+        batch_size_per_class=latent_examples_per_class,
+        start_index=reconstruction_examples_per_class,
+    )
+    return (
+        reconstruction_samples,
+        reconstruction_labels,
+        latent_samples,
+        latent_labels,
+    )
 
 
 def write_plot_artifacts(
@@ -174,12 +221,11 @@ def plot_reconstruction_grid(
         images=torch.stack(grid_images, dim=0),
         rows=data_config.num_classes,
         cols=2 * examples_per_class,
-        title="Validation reconstructions",
-        subplot_titles=[
-            title
-            for _ in range(data_config.num_classes)
-            for title in (["data", "recon"] * examples_per_class)
-        ],
+        title="Class-wise reconstructions",
+        subplot_titles=reconstruction_column_titles(
+            examples_per_class=examples_per_class,
+        )
+        * data_config.num_classes,
         row_titles=row_titles,
     )
 
@@ -296,11 +342,15 @@ def write_integrated_monitor_artifacts(
 
 
 __all__ = [
+    "build_latent_grid",
     "flatten_latents",
     "plot_generated_grid",
     "plot_latent_scatter",
     "plot_reconstruction_grid",
     "project_latents_to_pca_space",
+    "reconstruction_column_titles",
+    "sample_constraint_monitor_batches",
+    "write_critic_monitor_artifacts",
     "write_constraint_monitor_artifacts",
     "write_integrated_monitor_artifacts",
     "write_plot_artifacts",

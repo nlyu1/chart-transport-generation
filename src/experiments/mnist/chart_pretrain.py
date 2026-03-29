@@ -6,39 +6,70 @@ import torch
 import torch.nn.functional as F
 from tqdm.autonotebook import tqdm
 
-from src.experiments.multimodal_gaussian.common import (
-    compute_cycle_losses,
-    detach_metrics,
+from src.experiments.mnist.common import (
     format_metrics_summary,
     log_wandb_scalars,
-    optimizer_step_,
-    preserve_module_train_states,
     runtime_precision_context,
+    should_log_monitor,
 )
 from src.monitoring.utils import MonitorStage
 
 if TYPE_CHECKING:
-    from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
+    from src.experiments.mnist.state import MNISTTrainingRuntime
 
 
 def _compute_chart_pretrain_losses(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
     batch_size: int,
 ) -> dict[str, torch.Tensor]:
     chart_transport_config = rt.tc.chart_transport_config
     chart_pretrain_config = chart_transport_config.loss_config.chart_pretrain_config
-    cycle_losses = compute_cycle_losses(
-        rt=rt,
+    constraint_config = chart_transport_config.loss_config.constraint_config
+    prior_config = chart_transport_config.prior_config
+
+    encoder = rt.chart_transport_model.encoder
+    decoder = rt.chart_transport_model.decoder
+
+    data_batch = rt.runtime_data_config.sample_unconditional(
         batch_size=batch_size,
     )
+    prior_batch = prior_config.sample(
+        batch_size=batch_size,
+    ).to(device=rt.device, dtype=torch.float32)
+
+    data_latents = encoder(data_batch)
+    decoder_outputs = decoder(
+        torch.cat(
+            [data_latents, prior_batch],
+            dim=0,
+        )
+    )
+    data_reconstruction, prior_reconstruction = decoder_outputs.split(
+        [batch_size, batch_size],
+        dim=0,
+    )
+    prior_latents = encoder(prior_reconstruction)
+
+    data_cycle_loss = F.huber_loss(
+        data_reconstruction,
+        data_batch,
+        delta=constraint_config.huber_delta,
+        reduction="mean",
+    )
+    prior_cycle_loss = F.huber_loss(
+        prior_latents,
+        prior_batch,
+        delta=constraint_config.huber_delta,
+        reduction="mean",
+    )
     zero_mean_loss = F.huber_loss(
-        cycle_losses.data_latents.mean(),
-        torch.zeros((), device=rt.device, dtype=cycle_losses.data_latents.dtype),
+        data_latents.mean(),
+        torch.zeros((), device=rt.device, dtype=data_latents.dtype),
         delta=1.0,
         reduction="mean",
     )
-    latent_norms = cycle_losses.data_latents.norm(dim=-1)
+    latent_norms = data_latents.norm(dim=-1)
     latent_norm_loss = F.huber_loss(
         latent_norms,
         torch.zeros_like(latent_norms),
@@ -46,7 +77,7 @@ def _compute_chart_pretrain_losses(
         reduction="mean",
     )
 
-    chart_loss = cycle_losses.data_cycle_loss + cycle_losses.prior_cycle_loss
+    chart_loss = data_cycle_loss + prior_cycle_loss
     chart_loss = (
         chart_loss
         + chart_pretrain_config.zero_mean_weight * zero_mean_loss
@@ -55,77 +86,86 @@ def _compute_chart_pretrain_losses(
 
     return {
         "chart_loss": chart_loss,
-        "data_cycle_loss": cycle_losses.data_cycle_loss,
-        "prior_cycle_loss": cycle_losses.prior_cycle_loss,
+        "data_cycle_loss": data_cycle_loss,
+        "prior_cycle_loss": prior_cycle_loss,
         "zero_mean_loss": zero_mean_loss,
         "latent_norm_loss": latent_norm_loss,
     }
 
 
+def _detach_metrics(
+    *,
+    losses: dict[str, torch.Tensor],
+) -> dict[str, float]:
+    return {key: value.detach().item() for key, value in losses.items()}
+
+
 def chart_pretrain_train_step_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
 ) -> dict[str, float]:
     encoder = rt.chart_transport_model.encoder
     decoder = rt.chart_transport_model.decoder
+    critic = rt.chart_transport_model.critic
 
     encoder.train()
     decoder.train()
+    critic.eval()
 
+    rt.optimizer.zero_grad(set_to_none=True)
     with runtime_precision_context(rt=rt):
         losses = _compute_chart_pretrain_losses(
             rt=rt,
             batch_size=rt.tc.train_batch_size,
         )
-    optimizer_step_(
-        rt=rt,
-        loss=losses["chart_loss"],
+    rt.fabric.backward(losses["chart_loss"])
+    rt.fabric.clip_gradients(
+        rt.chart_transport_model,
+        rt.optimizer,
+        max_norm=rt.tc.chart_transport_config.architecture_config.grad_clip_norm,
+        error_if_nonfinite=False,
     )
-    return detach_metrics(losses=losses)
+    rt.optimizer.step()
+    return _detach_metrics(losses=losses)
 
 
 def chart_pretrain_eval_step_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
     step: int,
-    run_constraint_monitor: bool,
-    run_conditioning_monitor: bool,
 ) -> dict[str, float]:
     encoder = rt.chart_transport_model.encoder
     decoder = rt.chart_transport_model.decoder
 
-    with preserve_module_train_states(modules=[encoder, decoder]):
-        encoder.eval()
-        decoder.eval()
+    encoder_was_training = encoder.training
+    decoder_was_training = decoder.training
+    encoder.eval()
+    decoder.eval()
 
-        monitor_metrics: dict[str, float] = {}
+    with torch.no_grad():
         with runtime_precision_context(rt=rt):
-            if run_constraint_monitor:
-                monitor_metrics.update(
-                    rt.tc.monitor_config.constraint_monitor_config.apply_to(
-                        rt=rt,
-                        step=step,
-                        stage=MonitorStage.CHART,
-                    )
-                )
-            if run_conditioning_monitor:
-                monitor_metrics.update(
-                    rt.tc.monitor_config.conditioning_monitor_config.apply_to(
-                        rt=rt,
-                        step=step,
-                        stage=MonitorStage.CHART,
-                    )
-                )
+            monitor_metrics = rt.tc.monitor_config.constraint_monitor_config.apply_to(
+                rt=rt,
+                step=step,
+                stage=MonitorStage.CHART,
+            )
+
+    if encoder_was_training:
+        encoder.train()
+    if decoder_was_training:
+        decoder.train()
 
     return monitor_metrics
 
 
 def chart_pretrain_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
 ) -> dict[str, float]:
     total_steps = rt.tc.chart_transport_config.scheduling_config.pretrain_chart_n_steps
-    monitor_config = rt.tc.monitor_config
+    log_every_n_steps = (
+        rt.tc.monitor_config.schedule_config.log_every_n_steps_chart_pretrain
+    )
 
     latest_metrics: dict[str, float] = {}
     progress = tqdm(
@@ -147,33 +187,12 @@ def chart_pretrain_(
             prior_cycle=f"{train_metrics['prior_cycle_loss']:.4f}",
         )
 
-        if monitor_config.should_run_stage(
-            stage=MonitorStage.CHART,
+        if should_log_monitor(
             step=step,
             total_steps=total_steps,
+            every_n_steps=log_every_n_steps,
         ):
-            force_stage = monitor_config.should_force_stage(
-                stage=MonitorStage.CHART,
-                step=step,
-                total_steps=total_steps,
-            )
-            monitor_metrics = rt._chart_pretrain_eval_step(
-                step=step,
-                run_constraint_monitor=monitor_config.should_activate_component(
-                    component_config=monitor_config.constraint_monitor_config,
-                    stage=MonitorStage.CHART,
-                    step=step,
-                    total_steps=total_steps,
-                    force=force_stage,
-                ),
-                run_conditioning_monitor=monitor_config.should_activate_component(
-                    component_config=monitor_config.conditioning_monitor_config,
-                    stage=MonitorStage.CHART,
-                    step=step,
-                    total_steps=total_steps,
-                    force=force_stage,
-                ),
-            )
+            monitor_metrics = rt._chart_pretrain_eval_step(step=step)
             latest_metrics.update(
                 {f"monitor_{key}": value for key, value in monitor_metrics.items()}
             )
@@ -185,15 +204,10 @@ def chart_pretrain_(
                     f"monitor_{key}": value for key, value in monitor_metrics.items()
                 },
             )
-            monitor_summary_metrics = {
-                key: value
-                for key, value in monitor_metrics.items()
-                if "_mode_" not in key
-            }
             rt.fabric.print(
                 f"[pretrain] step {step}/{total_steps}: "
                 f"train: {format_metrics_summary(metrics=train_metrics)}; "
-                f"monitor: {format_metrics_summary(metrics=monitor_summary_metrics)}"
+                f"monitor: {format_metrics_summary(metrics=monitor_metrics)}"
             )
 
     return latest_metrics
@@ -203,7 +217,4 @@ __all__ = [
     "chart_pretrain_",
     "chart_pretrain_eval_step_",
     "chart_pretrain_train_step_",
-    "format_metrics_summary",
-    "log_wandb_scalars",
-    "runtime_precision_context",
 ]

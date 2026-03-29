@@ -107,8 +107,8 @@ def get_canonical_chart_transport_config(
     )
 
     constraint_method = LagrangianConstraintConfig(
-        data_constraint_budget=1e-2,
-        prior_constraint_budget=1e-2,
+        data_constraint_budget_per_dim=1e-2 / (data_config.data_numel() ** 0.5),
+        prior_constraint_budget_per_dim=1e-2 / (latent_dimension**0.5),
         dual_variable_lr=5e-3,
     )
     constraint_config = ManifoldConstraintConfig(
@@ -131,7 +131,6 @@ def get_canonical_chart_transport_config(
         encoder_transport_weight=1.0,
     )
     critic_config = CriticLossConfig(
-        loss_weight=1.0,
         huber_delta=2.0,
     )
     loss_config = ChartTransportLossConfig(
@@ -143,7 +142,7 @@ def get_canonical_chart_transport_config(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=2_000,
         pretrain_critic_n_steps=2_000,
-        update_chart_every_n_critic_steps=3,
+        n_critic_updates_every_transport_step=3,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(

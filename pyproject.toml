@@ -11,6 +11,7 @@ dependencies = [
     "einops>=0.8,<0.9",
     "hvplot>=0.12.2",
     "jaxtyping>=0.3,<0.4",
+    "kaleido>=1.2.0",
     "lightning>=2.6,<2.7",
     "matplotlib>=3.10.8,<3.11.0",
     "numpy>=2.4.3,<2.5.0",

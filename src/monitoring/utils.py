@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
 from jaxtyping import Float, Int
@@ -29,6 +30,12 @@ COLOR_BANK = (
 )
 
 
+class MonitorStage(str, Enum):
+    CHART = "chart"
+    CRITIC = "critic"
+    INTEGRATED = "integrated"
+
+
 def marker_color(
     *,
     group_id: int,
@@ -39,9 +46,10 @@ def marker_color(
 def step_folder(
     *,
     run_folder: Path,
+    stage: MonitorStage,
     step: int,
 ) -> Path:
-    folder = run_folder / str(step)
+    folder = run_folder / f"{stage.value}_{step}"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.chart_transport.aux_loss import ChartPretrainConfig, CriticLossConfig
 from src.chart_transport.base import ChartTransportConfig, ChartTransportLossConfig
 from src.chart_transport.constraint import (
-    LagrangianConstraintConfig,
+    LossConstraintConfig,
     ManifoldConstraintConfig,
 )
 from src.chart_transport.field import UniformVelocityMatchingSchedule
@@ -26,6 +26,9 @@ from src.monitoring.configs import (
     MonitorScheduleConfig,
 )
 from src.priors.anchored import AnchoredGaussianScaleMixturePriorConfig
+
+MIN_T = 0.01
+PLANAR = True
 
 
 def get_canonical_chart_transport_configs(
@@ -50,10 +53,14 @@ def get_canonical_chart_transport_configs(
     )
 
     """Defines how the manifold constraints are enforced during integration training"""
-    constraint_method = LagrangianConstraintConfig(
-        data_constraint_budget_per_dim=1e-4,
-        prior_constraint_budget_per_dim=1e-4,
-        dual_variable_lr=5e-3,
+    # constraint_method = LagrangianConstraintConfig(
+    #     data_constraint_budget_per_dim=1e-4,
+    #     prior_constraint_budget_per_dim=1e-4,
+    #     dual_variable_lr=5e-3,
+    # )
+    constraint_method = LossConstraintConfig(
+        data_loss_weight=1.0,
+        prior_loss_weight=1.0,
     )
     constraint_config = ManifoldConstraintConfig(
         huber_delta=5.0,
@@ -63,10 +70,10 @@ def get_canonical_chart_transport_configs(
     """Defining the transport field & approximations"""
     transport_config = TransportLossConfig(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
-        transport_step_size=0.1,
+        transport_step_size=5e-3,
         transport_step_cap=0.05,
         num_time_samples=8,
-        t_range=(0.03, 0.95),
+        t_range=(MIN_T, 0.99),
         antipodal_estimate=True,
         decoder_transport_weight=1.0,
         encoder_transport_weight=1.0,
@@ -83,12 +90,12 @@ def get_canonical_chart_transport_configs(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=2000,
         pretrain_critic_n_steps=2000,
-        n_critic_updates_every_transport_step=3,
+        n_critic_updates_every_transport_step=2,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(
-        min_t_lambda=0.03,
-        max_t_lambda=0.97,
+        min_t_lambda=MIN_T,
+        max_t_lambda=0.99,
         sinusoidal_dim=time_embedding_dimension,
         hidden_dim=hidden_dimension,
         output_dim=time_embedding_dimension,
@@ -151,15 +158,15 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
             activate_on_steps=[],
             n_sample_pairs_per_mode=500,
             n_data_latents_per_mode=500,
-            planar=False,
+            planar=PLANAR,
         ),
         critic_monitor_config=CriticMonitorConfig(
-            activate_on_steps=[1, 2, 5, 10, 20, 100],
-            sample_t_values=[0.03, 0.2],
+            activate_on_steps=[],  # 1, 2, 5, 10, 20, 100],
+            sample_t_values=[MIN_T, 0.2],
             num_contour_lines=10,
             n_data_latents_per_mode=500,
             n_vectors_per_mode=100,
-            planar=False,
+            planar=PLANAR,
             transport_grid_resolution=31,
             transport_num_time_samples=19,
         ),
@@ -178,7 +185,7 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
             activate_on_steps=[],
             log_every_n_steps_chart_pretrain=2000,
             log_every_n_steps_critic_pretrain=2000,
-            log_every_n_steps_integrated=4000,
+            log_every_n_steps_integrated=1000,
         ),
     )
 

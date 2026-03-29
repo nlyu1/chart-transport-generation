@@ -12,7 +12,9 @@ import torch.nn as nn
 from torch import Tensor
 
 from src.chart_transport.transport_loss import TransportLossConfig
+from src.monitoring.distribution import mode_beeswarm_figure
 from src.monitoring.utils import (
+    MonitorStage,
     build_latent_grid,
     critic_score_from_noise_prediction,
     flatten_latents,
@@ -47,6 +49,9 @@ class CriticSnapshot:
 
 
 ARROW_DISPLAY_SCALE = 2.0 / 3.0
+ARROW_HEAD_LENGTH_FRACTION = 0.24
+ARROW_HEAD_WIDTH_FRACTION = 0.10
+TRANSPORT_ARROW_DISPLAY_FRACTION = 0.008
 
 
 def sample_critic_snapshot(
@@ -229,6 +234,55 @@ def segment_coordinates(
     return xs, ys, zs
 
 
+def arrowhead_segment_coordinates_3d(
+    *,
+    stops: Float[Tensor, "batch 3"],
+    vectors: Float[Tensor, "batch 3"],
+) -> tuple[list[float], list[float], list[float]]:
+    vector_lengths = vectors.norm(dim=-1, keepdim=True)
+    directions = vectors / vector_lengths.clamp_min(1e-6)
+
+    primary_axis = torch.tensor(
+        [1.0, 0.0, 0.0],
+        device=vectors.device,
+        dtype=vectors.dtype,
+    ).expand_as(directions)
+    fallback_axis = torch.tensor(
+        [0.0, 1.0, 0.0],
+        device=vectors.device,
+        dtype=vectors.dtype,
+    ).expand_as(directions)
+    reference_axes = torch.where(
+        (directions[:, 0].abs() > 0.9).unsqueeze(-1),
+        fallback_axis,
+        primary_axis,
+    )
+
+    side_one = torch.linalg.cross(directions, reference_axes, dim=-1)
+    side_one = side_one / side_one.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+    side_two = torch.linalg.cross(directions, side_one, dim=-1)
+    side_two = side_two / side_two.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+
+    head_length = ARROW_HEAD_LENGTH_FRACTION * vector_lengths
+    head_width = ARROW_HEAD_WIDTH_FRACTION * vector_lengths
+    base_centers = stops - head_length * directions
+
+    wing_points = torch.cat(
+        [
+            base_centers + head_width * side_one,
+            base_centers - head_width * side_one,
+            base_centers + head_width * side_two,
+            base_centers - head_width * side_two,
+        ],
+        dim=0,
+    )
+    head_starts = stops.repeat(4, 1)
+    return segment_coordinates(
+        starts=head_starts,
+        vectors=wing_points - head_starts,
+    )
+
+
 def add_mode_vector_traces(
     *,
     figure: go.Figure,
@@ -328,26 +382,17 @@ def add_mode_vector_traces(
                 name=f"mode {mode_id}",
             )
         )
-        cone_vectors = 0.24 * vector_subset
-        cone_sizeref = float(
-            cone_vectors.norm(dim=-1).mean().item()
+        head_xs, head_ys, head_zs = arrowhead_segment_coordinates_3d(
+            stops=stop_subset,
+            vectors=vector_subset,
         )
         figure.add_trace(
-            go.Cone(
-                x=stop_subset[:, 0].tolist(),
-                y=stop_subset[:, 1].tolist(),
-                z=stop_subset[:, 2].tolist(),
-                u=cone_vectors[:, 0].tolist(),
-                v=cone_vectors[:, 1].tolist(),
-                w=cone_vectors[:, 2].tolist(),
-                anchor="tip",
-                sizemode="absolute",
-                sizeref=max(cone_sizeref, 1e-6),
-                showscale=False,
-                colorscale=[
-                    [0.0, marker_color(group_id=mode_id)],
-                    [1.0, marker_color(group_id=mode_id)],
-                ],
+            go.Scatter3d(
+                x=head_xs,
+                y=head_ys,
+                z=head_zs,
+                mode="lines",
+                line={"color": marker_color(group_id=mode_id), "width": 5},
                 hoverinfo="skip",
                 showlegend=False,
                 name=f"mode {mode_id}",
@@ -563,7 +608,7 @@ def critic_transport_figure(
         vectors=projected_transport_field,
         display_length=vector_display_length(
             projected_cloud_latents,
-            fraction=0.02,
+            fraction=TRANSPORT_ARROW_DISPLAY_FRACTION,
         ),
     ) * ARROW_DISPLAY_SCALE
     add_mode_vector_traces(
@@ -604,6 +649,29 @@ def critic_transport_figure(
             zaxis_title="pc3",
         )
     return figure
+
+
+def critic_snapshot_norm_figure(
+    *,
+    score_snapshots: list[CriticSnapshot],
+    dense_mode_ids: Int[Tensor, "batch"],
+) -> go.Figure:
+    if len(score_snapshots) == 0:
+        raise ValueError("score_snapshots must be non-empty")
+    return mode_beeswarm_figure(
+        panel_values=[
+            flatten_latents(snapshot.cloud_latents).norm(dim=-1)
+            for snapshot in score_snapshots
+        ],
+        labels=dense_mode_ids,
+        panel_titles=[
+            f"t={snapshot.t_value:.2f}"
+            for snapshot in score_snapshots
+        ],
+        xaxis_title="Noised latent norm",
+        title="Noised latent norm by class and critic snapshot time",
+        value_label="latent_norm",
+    )
 
 
 def write_critic_monitor_artifacts(
@@ -653,6 +721,13 @@ def write_critic_monitor_artifacts(
         ),
         path_stem=output_folder / "transport",
     )
+    write_figure(
+        figure=critic_snapshot_norm_figure(
+            score_snapshots=score_snapshots,
+            dense_mode_ids=dense_mode_ids,
+        ),
+        path_stem=output_folder / "latent_norms_by_t",
+    )
 
 
 def transport_t_values(
@@ -674,10 +749,8 @@ def apply_critic_monitor(
     config: "CriticMonitorConfig",
     rt,
     step: int,
-    stage: str,
+    stage: MonitorStage,
 ) -> dict[str, float]:
-    del stage
-
     dense_samples, dense_mode_ids = sample_mode_batch(
         data_config=rt.runtime_data_config,
         device=rt.device,
@@ -754,7 +827,11 @@ def apply_critic_monitor(
     dense_clean_latents_cpu = dense_clean_latents.detach().cpu().float()
     vector_clean_latents_cpu = vector_clean_latents.detach().cpu().float()
     write_critic_monitor_artifacts(
-        output_folder=step_folder(run_folder=rt.tc.folder, step=step),
+        output_folder=step_folder(
+            run_folder=rt.tc.folder,
+            stage=stage,
+            step=step,
+        ),
         reference_latents=dense_clean_latents_cpu,
         dense_latents=dense_clean_latents_cpu,
         dense_mode_ids=dense_mode_ids.detach().cpu().long(),
@@ -796,6 +873,7 @@ __all__ = [
     "add_mode_vector_traces",
     "apply_critic_monitor",
     "critic_score_snapshot_figure",
+    "critic_snapshot_norm_figure",
     "critic_transport_figure",
     "estimate_clean_transport_field",
     "projection_dim",

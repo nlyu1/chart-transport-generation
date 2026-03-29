@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal, Self
 
 import torch
@@ -122,16 +123,109 @@ class MultimodalTrainingRuntime:
         self,
         *,
         step: int,
+        run_constraint_monitor: bool,
+        run_critic_monitor: bool,
+        run_conditioning_monitor: bool,
+        run_sampling_monitor: bool,
     ) -> dict[str, float]:
         return integrated_eval_step_(
             rt=self,
             step=step,
+            run_constraint_monitor=run_constraint_monitor,
+            run_critic_monitor=run_critic_monitor,
+            run_conditioning_monitor=run_conditioning_monitor,
+            run_sampling_monitor=run_sampling_monitor,
         )
 
     def integrated(
         self,
     ) -> dict[str, float]:
         return integrated_(rt=self)
+
+    def _runtime_artifact_directory(
+        self,
+    ) -> Path:
+        return self.tc.folder / "runtime"
+
+    def _model_artifact_path(
+        self,
+        *,
+        stage: Literal["chart_pretrain", "critic_pretrain"],
+    ) -> Path:
+        return self._runtime_artifact_directory() / f"{stage}_model.pt"
+
+    def _model_state_dict_payload(
+        self,
+    ) -> dict[str, dict[str, torch.Tensor]]:
+        return {
+            "chart_transport_model_state_dict": {
+                key: value.detach().cpu()
+                for key, value in self.chart_transport_model.state_dict().items()
+            }
+        }
+
+    def save_model_artifact(
+        self,
+        *,
+        stage: Literal["chart_pretrain", "critic_pretrain"],
+    ) -> Path:
+        model_artifact_path = self._model_artifact_path(stage=stage)
+        model_artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            self._model_state_dict_payload(),
+            model_artifact_path,
+        )
+        return model_artifact_path
+
+    def save_chart_pretrain_model(
+        self,
+    ) -> Path:
+        return self.save_model_artifact(stage="chart_pretrain")
+
+    def save_critic_pretrain_model(
+        self,
+    ) -> Path:
+        return self.save_model_artifact(stage="critic_pretrain")
+
+    def load_model_artifact(
+        self,
+        *,
+        stage: Literal["chart_pretrain", "critic_pretrain"],
+    ) -> Path:
+        model_artifact_path = self._model_artifact_path(stage=stage)
+        if not model_artifact_path.exists():
+            raise FileNotFoundError(
+                f"Missing model artifact for {stage}: {model_artifact_path}"
+            )
+        payload = torch.load(
+            model_artifact_path,
+            map_location="cpu",
+        )
+        self.chart_transport_model.load_state_dict(
+            payload["chart_transport_model_state_dict"],
+        )
+        return model_artifact_path
+
+    def load_latest_pretrain_model(
+        self,
+    ) -> Path:
+        critic_pretrain_model_path = self._model_artifact_path(stage="critic_pretrain")
+        if critic_pretrain_model_path.exists():
+            return self.load_model_artifact(stage="critic_pretrain")
+
+        chart_pretrain_model_path = self._model_artifact_path(stage="chart_pretrain")
+        if chart_pretrain_model_path.exists():
+            return self.load_model_artifact(stage="chart_pretrain")
+
+        raise FileNotFoundError(
+            "No saved pretrain model found under "
+            f"{self._runtime_artifact_directory()}"
+        )
+
+    def finish(
+        self,
+    ) -> None:
+        self.wandb_run.finish()
 
     @classmethod
     def initialize(

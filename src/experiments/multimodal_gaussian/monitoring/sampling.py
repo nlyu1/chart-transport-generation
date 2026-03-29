@@ -9,6 +9,7 @@ from torch import Tensor
 
 from src.monitoring.configs import SamplingMonitorConfig
 from src.monitoring.utils import (
+    MonitorStage,
     latent_square_limits,
     marker_color,
     sample_mode_batch,
@@ -100,6 +101,7 @@ class GaussianSamplingMonitorConfig(SamplingMonitorConfig):
         *,
         rt: "MultimodalTrainingRuntime",
         step: int,
+        stage: MonitorStage,
     ) -> dict[str, float]:
         with torch.no_grad():
             generated_prior = rt.tc.chart_transport_config.prior_config.sample(
@@ -122,7 +124,11 @@ class GaussianSamplingMonitorConfig(SamplingMonitorConfig):
                 generated_samples
             )
 
-        folder = step_folder(run_folder=rt.tc.folder, step=step)
+        folder = step_folder(
+            run_folder=rt.tc.folder,
+            stage=stage,
+            step=step,
+        )
         write_figure(
             figure=_generated_samples_figure(
                 data_samples_2d=data_samples_2d,

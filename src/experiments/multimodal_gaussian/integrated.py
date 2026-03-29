@@ -11,22 +11,70 @@ from src.chart_transport.constraint import (
     LossConstraintConfig,
 )
 from src.chart_transport.training import estimate_transport_targets
-from src.experiments.multimodal_gaussian.chart_pretrain import (
-    _format_metrics_summary,
-    _log_wandb_scalars,
-    _runtime_precision_context,
-    _should_log_monitor,
+from src.experiments.multimodal_gaussian.common import (
+    compute_cycle_losses,
+    detach_metrics,
+    format_metrics_summary,
+    log_wandb_scalars,
+    optimizer_step_,
+    preserve_module_train_states,
+    runtime_precision_context,
 )
+from src.monitoring.utils import MonitorStage
 
 if TYPE_CHECKING:
     from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
 
 
-def _detach_metrics(
+_INTEGRATED_TRAIN_METRIC_NAMES = {
+    "critic_loss": "critic",
+    "repair_loss": "repair",
+    "data_cycle_loss": "data_cycle",
+    "prior_cycle_loss": "prior_cycle",
+    "data_dual": "data_dual",
+    "prior_dual": "prior_dual",
+    "transport_loss": "transport",
+    "encoder_transport_loss": "enc_transport",
+    "decoder_transport_loss": "dec_transport",
+    "transport_field_norm": "field",
+    "avg_generated_log_likelihood": "log_likelihood",
+}
+
+_INTEGRATED_MONITOR_METRIC_NAMES = {
+    "constraint_reconstruction_mean": "recon_err",
+    "constraint_latent_norm_mean": "latent_norm",
+    "critic_monitor_snapshot_score_norm_mean": "score",
+    "critic_monitor_transport_norm_mean": "field",
+    "encoder_conditioning_mean": "enc_cond",
+    "decoder_conditioning_mean": "dec_cond",
+    "sampling_generated_log_likelihood_mean": "log_likelihood",
+}
+
+
+def _select_metrics(
     *,
-    losses: dict[str, torch.Tensor],
+    metrics: dict[str, float],
+    selected_names: dict[str, str],
 ) -> dict[str, float]:
-    return {key: value.detach().item() for key, value in losses.items()}
+    missing = [key for key in selected_names if key not in metrics]
+    if len(missing) > 0:
+        raise KeyError(f"Missing metrics: {missing}")
+    return {
+        metric_name: metrics[key]
+        for key, metric_name in selected_names.items()
+    }
+
+
+def _select_present_metrics(
+    *,
+    metrics: dict[str, float],
+    selected_names: dict[str, str],
+) -> dict[str, float]:
+    return {
+        metric_name: metrics[key]
+        for key, metric_name in selected_names.items()
+        if key in metrics
+    }
 
 
 def _constraint_budget(
@@ -37,61 +85,26 @@ def _constraint_budget(
     return budget_per_dim * (numel**0.5)
 
 
-def _compute_cycle_losses(
-    *,
-    rt: "MultimodalTrainingRuntime",
-    batch_size: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    constraint_config = rt.tc.chart_transport_config.loss_config.constraint_config
-    prior_config = rt.tc.chart_transport_config.prior_config
-
-    data_batch = rt.runtime_data_config.sample_unconditional(
-        batch_size=batch_size,
-    )
-    prior_batch = prior_config.sample(
-        batch_size=batch_size,
-    ).to(device=rt.device, dtype=torch.float32)
-
-    data_latents = rt.chart_transport_model.encoder(data_batch)
-    data_reconstruction = rt.chart_transport_model.decoder(data_latents)
-    prior_reconstruction = rt.chart_transport_model.decoder(prior_batch)
-    prior_latents = rt.chart_transport_model.encoder(prior_reconstruction)
-
-    data_cycle_loss = F.huber_loss(
-        data_reconstruction,
-        data_batch,
-        delta=constraint_config.huber_delta,
-        reduction="mean",
-    )
-    prior_cycle_loss = F.huber_loss(
-        prior_latents,
-        prior_batch,
-        delta=constraint_config.huber_delta,
-        reduction="mean",
-    )
-    return data_cycle_loss, prior_cycle_loss
-
-
 def _compute_constraint_repair_losses(
     *,
     rt: "MultimodalTrainingRuntime",
     batch_size: int,
 ) -> dict[str, torch.Tensor]:
     constraint_method = rt.tc.chart_transport_config.loss_config.constraint_config.constraint_method
-    data_cycle_loss, prior_cycle_loss = _compute_cycle_losses(
+    cycle_losses = compute_cycle_losses(
         rt=rt,
         batch_size=batch_size,
     )
 
     if isinstance(constraint_method, LossConstraintConfig):
         repair_loss = (
-            constraint_method.data_loss_weight * data_cycle_loss
-            + constraint_method.prior_loss_weight * prior_cycle_loss
+            constraint_method.data_loss_weight * cycle_losses.data_cycle_loss
+            + constraint_method.prior_loss_weight * cycle_losses.prior_cycle_loss
         )
         return {
             "repair_loss": repair_loss,
-            "data_cycle_loss": data_cycle_loss,
-            "prior_cycle_loss": prior_cycle_loss,
+            "data_cycle_loss": cycle_losses.data_cycle_loss,
+            "prior_cycle_loss": cycle_losses.prior_cycle_loss,
         }
 
     data_budget = _constraint_budget(
@@ -102,13 +115,17 @@ def _compute_constraint_repair_losses(
         budget_per_dim=constraint_method.prior_constraint_budget_per_dim,
         numel=rt.tc.chart_transport_config.prior_config.latent_numel(),
     )
-    repair_loss = data_cycle_loss + prior_cycle_loss
-    repair_loss = repair_loss + rt.data_dual * (data_cycle_loss - data_budget)
-    repair_loss = repair_loss + rt.prior_dual * (prior_cycle_loss - prior_budget)
+    repair_loss = cycle_losses.data_cycle_loss + cycle_losses.prior_cycle_loss
+    repair_loss = repair_loss + rt.data_dual * (
+        cycle_losses.data_cycle_loss - data_budget
+    )
+    repair_loss = repair_loss + rt.prior_dual * (
+        cycle_losses.prior_cycle_loss - prior_budget
+    )
     return {
         "repair_loss": repair_loss,
-        "data_cycle_loss": data_cycle_loss,
-        "prior_cycle_loss": prior_cycle_loss,
+        "data_cycle_loss": cycle_losses.data_cycle_loss,
+        "prior_cycle_loss": cycle_losses.prior_cycle_loss,
     }
 
 
@@ -154,26 +171,21 @@ def integrated_constraint_repair_step_(
     decoder.train()
     critic.eval()
 
-    rt.optimizer.zero_grad(set_to_none=True)
-    with _runtime_precision_context(rt=rt):
+    with runtime_precision_context(rt=rt):
         losses = _compute_constraint_repair_losses(
             rt=rt,
             batch_size=rt.tc.train_batch_size,
         )
-    rt.fabric.backward(losses["repair_loss"])
-    rt.fabric.clip_gradients(
-        rt.chart_transport_model,
-        rt.optimizer,
-        max_norm=rt.tc.chart_transport_config.architecture_config.grad_clip_norm,
-        error_if_nonfinite=False,
+    optimizer_step_(
+        rt=rt,
+        loss=losses["repair_loss"],
     )
-    rt.optimizer.step()
     _update_constraint_duals_(
         rt=rt,
         data_cycle_loss=losses["data_cycle_loss"],
         prior_cycle_loss=losses["prior_cycle_loss"],
     )
-    metrics = _detach_metrics(losses=losses)
+    metrics = detach_metrics(losses=losses)
     metrics["data_dual"] = rt.data_dual.detach().item()
     metrics["prior_dual"] = rt.prior_dual.detach().item()
     return metrics
@@ -242,21 +254,16 @@ def integrated_transport_step_(
     decoder.train()
     critic.eval()
 
-    rt.optimizer.zero_grad(set_to_none=True)
-    with _runtime_precision_context(rt=rt):
+    with runtime_precision_context(rt=rt):
         losses = _compute_transport_losses(
             rt=rt,
             batch_size=rt.tc.train_batch_size,
         )
-    rt.fabric.backward(losses["transport_loss"])
-    rt.fabric.clip_gradients(
-        rt.chart_transport_model,
-        rt.optimizer,
-        max_norm=rt.tc.chart_transport_config.architecture_config.grad_clip_norm,
-        error_if_nonfinite=False,
+    optimizer_step_(
+        rt=rt,
+        loss=losses["transport_loss"],
     )
-    rt.optimizer.step()
-    return _detach_metrics(losses=losses)
+    return detach_metrics(losses=losses)
 
 
 def _average_metrics(
@@ -309,52 +316,60 @@ def integrated_eval_step_(
     *,
     rt: "MultimodalTrainingRuntime",
     step: int,
+    run_constraint_monitor: bool,
+    run_critic_monitor: bool,
+    run_conditioning_monitor: bool,
+    run_sampling_monitor: bool,
 ) -> dict[str, float]:
     encoder = rt.chart_transport_model.encoder
     decoder = rt.chart_transport_model.decoder
     critic = rt.chart_transport_model.critic
 
-    encoder_was_training = encoder.training
-    decoder_was_training = decoder.training
-    critic_was_training = critic.training
-    encoder.eval()
-    decoder.eval()
-    critic.eval()
+    with preserve_module_train_states(modules=[encoder, decoder, critic]):
+        encoder.eval()
+        decoder.eval()
+        critic.eval()
 
-    with torch.no_grad():
-        with _runtime_precision_context(rt=rt):
-            monitor_metrics = rt.tc.monitor_config.constraint_monitor_config.apply_to(
-                rt=rt,
-                step=step,
-            )
-            monitor_metrics.update(
-                rt.tc.monitor_config.critic_monitor_config.apply_to(
-                    rt=rt,
-                    step=step,
-                    stage="integrated",
-                )
-            )
-            monitor_metrics.update(
-                rt.tc.monitor_config.conditioning_monitor_config.apply_to(
-                    rt=rt,
-                    step=step,
-                )
-            )
-            monitor_metrics.update(
-                rt.tc.monitor_config.sampling_monitor_config.apply_to(
-                    rt=rt,
-                    step=step,
-                )
-            )
+        with torch.no_grad():
+            with runtime_precision_context(rt=rt):
+                raw_monitor_metrics: dict[str, float] = {}
+                if run_constraint_monitor:
+                    raw_monitor_metrics.update(
+                        rt.tc.monitor_config.constraint_monitor_config.apply_to(
+                            rt=rt,
+                            step=step,
+                            stage=MonitorStage.INTEGRATED,
+                        )
+                    )
+                if run_critic_monitor:
+                    raw_monitor_metrics.update(
+                        rt.tc.monitor_config.critic_monitor_config.apply_to(
+                            rt=rt,
+                            step=step,
+                            stage=MonitorStage.INTEGRATED,
+                        )
+                    )
+                if run_conditioning_monitor:
+                    raw_monitor_metrics.update(
+                        rt.tc.monitor_config.conditioning_monitor_config.apply_to(
+                            rt=rt,
+                            step=step,
+                            stage=MonitorStage.INTEGRATED,
+                        )
+                    )
+                if run_sampling_monitor:
+                    raw_monitor_metrics.update(
+                        rt.tc.monitor_config.sampling_monitor_config.apply_to(
+                            rt=rt,
+                            step=step,
+                            stage=MonitorStage.INTEGRATED,
+                        )
+                    )
 
-    if encoder_was_training:
-        encoder.train()
-    if decoder_was_training:
-        decoder.train()
-    if critic_was_training:
-        critic.train()
-
-    return monitor_metrics
+    return _select_present_metrics(
+        metrics=raw_monitor_metrics,
+        selected_names=_INTEGRATED_MONITOR_METRIC_NAMES,
+    )
 
 
 def integrated_(
@@ -362,7 +377,7 @@ def integrated_(
     rt: "MultimodalTrainingRuntime",
 ) -> dict[str, float]:
     total_steps = rt.tc.integrated_n_steps
-    log_every_n_steps = rt.tc.monitor_config.schedule_config.log_every_n_steps_integrated
+    monitor_config = rt.tc.monitor_config
 
     latest_metrics: dict[str, float] = {}
     progress = tqdm(
@@ -370,30 +385,69 @@ def integrated_(
         desc="integrated",
     )
     for step in progress:
-        train_metrics = rt._integrated_train_step()
+        raw_train_metrics = rt._integrated_train_step()
+        train_metrics = _select_metrics(
+            metrics=raw_train_metrics,
+            selected_names=_INTEGRATED_TRAIN_METRIC_NAMES,
+        )
         latest_metrics = {f"train_{key}": value for key, value in train_metrics.items()}
-        _log_wandb_scalars(
+        log_wandb_scalars(
             rt=rt,
             stage="integrated",
             step=step,
             metrics=train_metrics,
         )
         progress.set_postfix(
-            critic_loss=f"{train_metrics['critic_loss']:.4f}",
-            repair_loss=f"{train_metrics['repair_loss']:.4f}",
-            transport_loss=f"{train_metrics['transport_loss']:.4f}",
+            critic=f"{train_metrics['critic']:.4f}",
+            repair=f"{train_metrics['repair']:.4f}",
+            transport=f"{train_metrics['transport']:.4f}",
         )
 
-        if _should_log_monitor(
+        if monitor_config.should_run_stage(
+            stage=MonitorStage.INTEGRATED,
             step=step,
             total_steps=total_steps,
-            every_n_steps=log_every_n_steps,
         ):
-            monitor_metrics = rt._integrated_eval_step(step=step)
+            force_stage = monitor_config.should_force_stage(
+                stage=MonitorStage.INTEGRATED,
+                step=step,
+                total_steps=total_steps,
+            )
+            monitor_metrics = rt._integrated_eval_step(
+                step=step,
+                run_constraint_monitor=monitor_config.should_activate_component(
+                    component_config=monitor_config.constraint_monitor_config,
+                    stage=MonitorStage.INTEGRATED,
+                    step=step,
+                    total_steps=total_steps,
+                    force=force_stage,
+                ),
+                run_critic_monitor=monitor_config.should_activate_component(
+                    component_config=monitor_config.critic_monitor_config,
+                    stage=MonitorStage.INTEGRATED,
+                    step=step,
+                    total_steps=total_steps,
+                    force=force_stage,
+                ),
+                run_conditioning_monitor=monitor_config.should_activate_component(
+                    component_config=monitor_config.conditioning_monitor_config,
+                    stage=MonitorStage.INTEGRATED,
+                    step=step,
+                    total_steps=total_steps,
+                    force=force_stage,
+                ),
+                run_sampling_monitor=monitor_config.should_activate_component(
+                    component_config=monitor_config.sampling_monitor_config,
+                    stage=MonitorStage.INTEGRATED,
+                    step=step,
+                    total_steps=total_steps,
+                    force=force_stage,
+                ),
+            )
             latest_metrics.update(
                 {f"monitor_{key}": value for key, value in monitor_metrics.items()}
             )
-            _log_wandb_scalars(
+            log_wandb_scalars(
                 rt=rt,
                 stage="integrated",
                 step=step,
@@ -403,8 +457,8 @@ def integrated_(
             )
             rt.fabric.print(
                 f"[integrated] step {step}/{total_steps}: "
-                f"train: {_format_metrics_summary(metrics=train_metrics)}; "
-                f"monitor: {_format_metrics_summary(metrics=monitor_metrics)}"
+                f"train: {format_metrics_summary(metrics=train_metrics)}; "
+                f"monitor: {format_metrics_summary(metrics=monitor_metrics)}"
             )
 
     return latest_metrics

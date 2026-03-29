@@ -11,6 +11,7 @@ from torch import Tensor
 
 from src.monitoring.configs import ConstraintMonitorConfig
 from src.monitoring.utils import (
+    MonitorStage,
     marker_color,
     sample_mode_batch,
     step_folder,
@@ -165,6 +166,7 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
         *,
         rt: "MultimodalTrainingRuntime",
         step: int,
+        stage: MonitorStage,
     ) -> dict[str, float]:
         with torch.no_grad():
             samples, labels = sample_mode_batch(
@@ -194,7 +196,11 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
             latent_values = rt.chart_transport_model.encoder(latent_samples).float()
             latent_norms = latent_values.norm(dim=-1).float()
 
-        folder = step_folder(run_folder=rt.tc.folder, step=step)
+        folder = step_folder(
+            run_folder=rt.tc.folder,
+            stage=stage,
+            step=step,
+        )
         write_figure(
             figure=_reconstruction_figure(
                 samples_2d=samples_2d,

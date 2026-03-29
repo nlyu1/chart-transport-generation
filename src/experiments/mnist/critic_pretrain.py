@@ -7,23 +7,21 @@ import torch.nn.functional as F
 from tqdm.autonotebook import tqdm
 
 from src.chart_transport.training import sample_transport_times
-from src.experiments.multimodal_gaussian.common import (
-    detach_metrics,
+from src.experiments.mnist.common import (
     format_metrics_summary,
     log_wandb_scalars,
-    optimizer_step_,
-    preserve_module_train_states,
     runtime_precision_context,
+    should_log_monitor,
 )
 from src.monitoring.utils import MonitorStage
 
 if TYPE_CHECKING:
-    from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
+    from src.experiments.mnist.state import MNISTTrainingRuntime
 
 
 def _compute_critic_pretrain_loss(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
     batch_size: int,
 ) -> dict[str, torch.Tensor]:
     encoder = rt.chart_transport_model.encoder
@@ -44,12 +42,21 @@ def _compute_critic_pretrain_loss(
     noised_latents = (1.0 - t).unsqueeze(-1) * data_latents + t.unsqueeze(-1) * eps
     predicted_noise = critic(noised_latents, t)
     critic_loss = F.mse_loss(predicted_noise, eps)
-    return {"critic_loss": critic_loss}
+    return {
+        "critic_loss": critic_loss,
+    }
+
+
+def _detach_metrics(
+    *,
+    losses: dict[str, torch.Tensor],
+) -> dict[str, float]:
+    return {key: value.detach().item() for key, value in losses.items()}
 
 
 def critic_pretrain_train_step_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
 ) -> dict[str, float]:
     encoder = rt.chart_transport_model.encoder
     decoder = rt.chart_transport_model.decoder
@@ -59,45 +66,55 @@ def critic_pretrain_train_step_(
     decoder.eval()
     critic.train()
 
+    rt.optimizer.zero_grad(set_to_none=True)
     with runtime_precision_context(rt=rt):
         losses = _compute_critic_pretrain_loss(
             rt=rt,
             batch_size=rt.tc.train_batch_size,
         )
-    optimizer_step_(
-        rt=rt,
-        loss=losses["critic_loss"],
+    rt.fabric.backward(losses["critic_loss"])
+    rt.fabric.clip_gradients(
+        rt.chart_transport_model,
+        rt.optimizer,
+        max_norm=rt.tc.chart_transport_config.architecture_config.grad_clip_norm,
+        error_if_nonfinite=False,
     )
-    return detach_metrics(losses=losses)
+    rt.optimizer.step()
+    return _detach_metrics(losses=losses)
 
 
 def critic_pretrain_eval_step_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
     step: int,
 ) -> dict[str, float]:
     critic = rt.chart_transport_model.critic
 
-    with preserve_module_train_states(modules=[critic]):
-        critic.eval()
+    critic_was_training = critic.training
+    critic.eval()
 
-        with torch.no_grad():
-            with runtime_precision_context(rt=rt):
-                monitor_metrics = rt.tc.monitor_config.critic_monitor_config.apply_to(
-                    rt=rt,
-                    step=step,
-                    stage=MonitorStage.CRITIC,
-                )
+    with torch.no_grad():
+        with runtime_precision_context(rt=rt):
+            monitor_metrics = rt.tc.monitor_config.critic_monitor_config.apply_to(
+                rt=rt,
+                step=step,
+                stage=MonitorStage.CRITIC,
+            )
+
+    if critic_was_training:
+        critic.train()
 
     return monitor_metrics
 
 
 def critic_pretrain_(
     *,
-    rt: "MultimodalTrainingRuntime",
+    rt: "MNISTTrainingRuntime",
 ) -> dict[str, float]:
     total_steps = rt.tc.chart_transport_config.scheduling_config.pretrain_critic_n_steps
-    monitor_config = rt.tc.monitor_config
+    log_every_n_steps = (
+        rt.tc.monitor_config.schedule_config.log_every_n_steps_critic_pretrain
+    )
 
     latest_metrics: dict[str, float] = {}
     progress = tqdm(
@@ -117,10 +134,10 @@ def critic_pretrain_(
             critic_loss=f"{train_metrics['critic_loss']:.4f}",
         )
 
-        if monitor_config.should_run_stage(
-            stage=MonitorStage.CRITIC,
+        if should_log_monitor(
             step=step,
             total_steps=total_steps,
+            every_n_steps=log_every_n_steps,
         ):
             monitor_metrics = rt._critic_pretrain_eval_step(step=step)
             latest_metrics.update(

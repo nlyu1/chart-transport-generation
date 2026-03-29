@@ -7,6 +7,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from src.config.base import BaseConfig
+from src.monitoring.utils import MonitorStage
 
 if TYPE_CHECKING:
     import torch.nn as nn
@@ -85,7 +86,7 @@ class CriticMonitorConfig(BaseMonitorComponentConfig):
         *,
         rt,
         step: int,
-        stage: str,
+        stage: MonitorStage,
     ) -> dict[str, float]:
         from src.monitoring.critic import apply_critic_monitor
 
@@ -111,6 +112,7 @@ class SamplingMonitorConfig(BaseMonitorComponentConfig):
         *,
         rt,
         step: int,
+        stage: MonitorStage,
     ) -> dict[str, float]:
         raise NotImplementedError(
             "Sampling monitors must be implemented by experiment-specific subclasses"
@@ -131,6 +133,7 @@ class ConditioningMonitorConfig(BaseMonitorComponentConfig):
         *,
         rt,
         step: int,
+        stage: MonitorStage,
     ) -> dict[str, float]:
         from src.monitoring.conditioning import apply_conditioning_monitor
 
@@ -138,6 +141,7 @@ class ConditioningMonitorConfig(BaseMonitorComponentConfig):
             config=self,
             rt=rt,
             step=step,
+            stage=stage,
         )
 
     def largest_singular_values(
@@ -173,3 +177,97 @@ class BaseMonitorConfig(BaseConfig):
     sampling_monitor_config: SamplingMonitorConfig
     conditioning_monitor_config: ConditioningMonitorConfig
     schedule_config: MonitorScheduleConfig
+
+    def every_n_steps_for_stage(
+        self,
+        *,
+        stage: MonitorStage,
+    ) -> int:
+        if stage is MonitorStage.CHART:
+            return self.schedule_config.log_every_n_steps_chart_pretrain
+        if stage is MonitorStage.CRITIC:
+            return self.schedule_config.log_every_n_steps_critic_pretrain
+        if stage is MonitorStage.INTEGRATED:
+            return self.schedule_config.log_every_n_steps_integrated
+        raise ValueError(f"Unknown monitor stage: {stage}")
+
+    def relevant_component_configs(
+        self,
+        *,
+        stage: MonitorStage,
+    ) -> tuple[BaseMonitorComponentConfig, ...]:
+        if stage is MonitorStage.CHART:
+            return (
+                self.constraint_monitor_config,
+                self.conditioning_monitor_config,
+            )
+        if stage is MonitorStage.CRITIC:
+            return (self.critic_monitor_config,)
+        if stage is MonitorStage.INTEGRATED:
+            return (
+                self.constraint_monitor_config,
+                self.critic_monitor_config,
+                self.conditioning_monitor_config,
+                self.sampling_monitor_config,
+            )
+        raise ValueError(f"Unknown monitor stage: {stage}")
+
+    def should_force_stage(
+        self,
+        *,
+        stage: MonitorStage,
+        step: int,
+        total_steps: int,
+    ) -> bool:
+        every_n_steps = self.every_n_steps_for_stage(stage=stage)
+        return self.schedule_config.should_activate(
+            step=step,
+            total_steps=total_steps,
+            every_n_steps=every_n_steps,
+        )
+
+    def should_activate_component(
+        self,
+        *,
+        component_config: BaseMonitorComponentConfig,
+        stage: MonitorStage,
+        step: int,
+        total_steps: int,
+        force: bool = False,
+    ) -> bool:
+        if force:
+            return True
+        if stage is MonitorStage.CRITIC:
+            return False
+        every_n_steps = self.every_n_steps_for_stage(stage=stage)
+        return component_config.should_activate(
+            step=step,
+            total_steps=total_steps,
+            every_n_steps=every_n_steps,
+        )
+
+    def should_run_stage(
+        self,
+        *,
+        stage: MonitorStage,
+        step: int,
+        total_steps: int,
+    ) -> bool:
+        force = self.should_force_stage(
+            stage=stage,
+            step=step,
+            total_steps=total_steps,
+        )
+        if force:
+            return True
+        if stage is MonitorStage.CRITIC:
+            return False
+        return any(
+            self.should_activate_component(
+                component_config=component_config,
+                stage=stage,
+                step=step,
+                total_steps=total_steps,
+            )
+            for component_config in self.relevant_component_configs(stage=stage)
+        )

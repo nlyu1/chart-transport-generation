@@ -84,6 +84,24 @@ class MNISTDataConfig(BaseDataConfig):
                 raise ValueError(f"class {mode_id} contains no samples")
         return self
 
+    def to(
+        self,
+        *,
+        device: torch.device,
+    ) -> Self:
+        return self.replace(
+            path="samples",
+            replacement=self.samples.to(device=device),
+        ).replace(
+            path="labels",
+            replacement=self.labels.to(device=device),
+        ).replace(
+            path="class_indices",
+            replacement=tuple(
+                class_indices.to(device=device) for class_indices in self.class_indices
+            ),
+        )
+
     def _sample_from_indices(
         self,
         *,
