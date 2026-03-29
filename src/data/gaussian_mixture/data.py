@@ -168,5 +168,90 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         )
         return torch.logsumexp(component_log_densities, dim=1) - math.log(self.num_classes)
 
+    def approximate_kl(
+        self,
+        data_samples: Float[Tensor, "batch ambient_dimension"],
+        kde_scales: list[float],
+        kl_num_samples: int,
+        avg_kl_num_batches: int,
+    ) -> Float[Tensor, "kde_scales mode_id"]:
+        """
+        Estimate per-mode forward KL from the true 2D Gaussian component to a projected
+        Gaussian KDE fit to ``data_samples``.
+
+        ``kde_scales`` are interpreted as per-dimension kernel variances.
+
+        The ambient-space data distribution is singular away from the embedded plane, so
+        this monitor intentionally evaluates the projected 2D distribution.
+        """
+        if len(kde_scales) == 0:
+            raise ValueError("kde_scales must be non-empty")
+        if kl_num_samples <= 0:
+            raise ValueError("kl_num_samples must be positive")
+        if avg_kl_num_batches <= 0:
+            raise ValueError("avg_kl_num_batches must be positive")
+        if data_samples.ndim != 2:
+            raise ValueError("data_samples must be rank-2")
+        if data_samples.shape[0] <= 0:
+            raise ValueError("data_samples must contain at least one sample")
+
+        projected_data_samples = self.project(data_samples).to(dtype=torch.float32)
+        kde_scale_tensor = torch.tensor(
+            kde_scales,
+            device=projected_data_samples.device,
+            dtype=projected_data_samples.dtype,
+        )
+        if torch.any(kde_scale_tensor <= 0.0):
+            raise ValueError("kde_scales must be strictly positive")
+
+        log_num_data_samples = math.log(projected_data_samples.shape[0])
+        scale_per_dimension = kde_scale_tensor.reshape(-1, 1, 1)
+        log_kde_normalizer = (
+            math.log(2.0 * math.pi) + torch.log(kde_scale_tensor)
+        ).reshape(-1, 1)
+        component_log_normalizer = math.log(2.0 * math.pi * self.mode_std**2)
+        mode_centers = self.mode_centers_2d().to(
+            device=projected_data_samples.device,
+            dtype=projected_data_samples.dtype,
+        )
+
+        approximate_kl = torch.zeros(
+            (len(kde_scales), self.num_modes),
+            device=projected_data_samples.device,
+            dtype=projected_data_samples.dtype,
+        )
+
+        for _ in range(avg_kl_num_batches):
+            for mode_id in range(self.num_modes):
+                projected_mode_samples = self.project(
+                    self.sample_class(
+                        mode_id=mode_id,
+                        batch_size=kl_num_samples,
+                    )
+                ).to(dtype=projected_data_samples.dtype)
+                squared_distances = torch.cdist(
+                    projected_mode_samples,
+                    projected_data_samples,
+                    p=2.0,
+                ).square()
+                centered_samples = projected_mode_samples - mode_centers[mode_id]
+                exact_log_density = (
+                    -0.5 * centered_samples.square().sum(dim=-1) / (self.mode_std**2)
+                    - component_log_normalizer
+                )
+                kde_log_density = (
+                    torch.logsumexp(
+                        -0.5 * squared_distances.unsqueeze(0) / scale_per_dimension
+                        - log_kde_normalizer.unsqueeze(-1),
+                        dim=-1,
+                    )
+                    - log_num_data_samples
+                )
+                approximate_kl[:, mode_id] += (
+                    exact_log_density.unsqueeze(0) - kde_log_density
+                ).mean(dim=-1)
+
+        return approximate_kl / avg_kl_num_batches
+
 
 __all__ = ["MultimodalGaussianDataConfig"]

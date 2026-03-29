@@ -151,7 +151,6 @@ def _write_reconstruction_error_parquet(
         path=(
             step_root
             / "numbers"
-            / "constraint_reconstruction"
             / "reconstruction_error_norms.parquet"
         ),
         mode_ids=labels,

@@ -36,9 +36,9 @@ def get_canonical_chart_transport_configs(
     latent_dimension: int,
     data_config: MultimodalGaussianDataConfig,
 ) -> ChartTransportConfig:
-    prior_precision = 3.0
-    hidden_dimension = 768
-    time_embedding_dimension = 768
+    prior_precision = 2.0
+    hidden_dimension = 512
+    time_embedding_dimension = 512
 
     prior_config = AnchoredGaussianScaleMixturePriorConfig.initialize(
         latent_shape=[latent_dimension],
@@ -70,8 +70,8 @@ def get_canonical_chart_transport_configs(
     """Defining the transport field & approximations"""
     transport_config = TransportLossConfig(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
-        transport_step_size=5e-3,
-        transport_step_cap=0.05,
+        transport_step_size=0.1,
+        transport_step_cap=0.1,
         num_time_samples=8,
         t_range=(MIN_T, 0.99),
         antipodal_estimate=True,
@@ -88,8 +88,8 @@ def get_canonical_chart_transport_configs(
         critic_config=critic_config,
     )
     scheduling_config = ChartTransportSchedulingConfig(
-        pretrain_chart_n_steps=2000,
-        pretrain_critic_n_steps=2000,
+        pretrain_chart_n_steps=1000,
+        pretrain_critic_n_steps=1000,
         n_critic_updates_every_transport_step=2,
     )
 
@@ -108,8 +108,6 @@ def get_canonical_chart_transport_configs(
                 hidden_dimension,
                 hidden_dimension,
                 hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
                 latent_dimension,
             ],
         ),
@@ -120,15 +118,12 @@ def get_canonical_chart_transport_configs(
                 hidden_dimension,
                 hidden_dimension,
                 hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
                 data_config.data_numel(),
             ],
         ),
         critic=StackedResidualMLPConfig.initialize(
             layer_dims=[
                 latent_dimension,
-                hidden_dimension,
                 hidden_dimension,
                 hidden_dimension,
                 hidden_dimension,
@@ -174,6 +169,9 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
             activate_on_steps=[],
             n_generated_samples=3000,
             n_data_samples_per_mode=1000,
+            kde_scales=[1e-3, 3e-3, 1e-2, 3e-2],
+            kl_num_samples=512,
+            avg_kl_num_batches=8,
         ),
         conditioning_monitor_config=ConditioningMonitorConfig(
             activate_on_steps=[],
@@ -183,8 +181,8 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
         ),
         schedule_config=MonitorScheduleConfig(
             activate_on_steps=[],
-            log_every_n_steps_chart_pretrain=2000,
-            log_every_n_steps_critic_pretrain=2000,
+            log_every_n_steps_chart_pretrain=1000,
+            log_every_n_steps_critic_pretrain=1000,
             log_every_n_steps_integrated=1000,
         ),
     )

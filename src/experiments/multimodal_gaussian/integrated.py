@@ -37,7 +37,6 @@ _INTEGRATED_TRAIN_METRIC_NAMES = {
     "encoder_transport_loss": "enc_transport",
     "decoder_transport_loss": "dec_transport",
     "transport_field_norm": "field",
-    "avg_generated_log_likelihood": "log_likelihood",
 }
 
 _INTEGRATED_MONITOR_METRIC_NAMES = {
@@ -47,7 +46,6 @@ _INTEGRATED_MONITOR_METRIC_NAMES = {
     "critic_monitor_transport_norm_mean": "field",
     "encoder_conditioning_mean": "enc_cond",
     "decoder_conditioning_mean": "dec_cond",
-    "sampling_generated_log_likelihood_mean": "log_likelihood",
 }
 
 
@@ -75,6 +73,24 @@ def _select_present_metrics(
         for key, metric_name in selected_names.items()
         if key in metrics
     }
+
+
+def _select_present_monitor_metrics(
+    *,
+    metrics: dict[str, float],
+) -> dict[str, float]:
+    selected_metrics = _select_present_metrics(
+        metrics=metrics,
+        selected_names=_INTEGRATED_MONITOR_METRIC_NAMES,
+    )
+    selected_metrics.update(
+        {
+            f"kl_{key.removeprefix('projected_kl_mean_')}": value
+            for key, value in metrics.items()
+            if key.startswith("projected_kl_mean_")
+        }
+    )
+    return selected_metrics
 
 
 def _constraint_budget(
@@ -213,13 +229,6 @@ def _compute_transport_losses(
                 clean_latents=data_latents,
             )
         )
-        generated_prior_batch = prior_config.sample(
-            batch_size=batch_size,
-        ).to(device=rt.device, dtype=torch.float32)
-        generated_samples = rt.chart_transport_model.decoder(generated_prior_batch)
-        avg_generated_log_likelihood = rt.runtime_data_config.log_likelihood(
-            generated_samples.float(),
-        ).mean()
 
     encoder_transport_loss = F.mse_loss(
         data_latents,
@@ -238,7 +247,6 @@ def _compute_transport_losses(
         "encoder_transport_loss": encoder_transport_loss,
         "decoder_transport_loss": decoder_transport_loss,
         "transport_field_norm": transport_field_norm.mean(),
-        "avg_generated_log_likelihood": avg_generated_log_likelihood,
     }
 
 
@@ -366,10 +374,7 @@ def integrated_eval_step_(
                         )
                     )
 
-    return _select_present_metrics(
-        metrics=raw_monitor_metrics,
-        selected_names=_INTEGRATED_MONITOR_METRIC_NAMES,
-    )
+    return _select_present_monitor_metrics(metrics=raw_monitor_metrics)
 
 
 def integrated_(
