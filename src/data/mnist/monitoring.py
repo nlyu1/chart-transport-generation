@@ -4,7 +4,6 @@ from pathlib import Path
 
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
-import polars as pl
 import torch
 from plotly.subplots import make_subplots
 
@@ -618,200 +617,6 @@ def plot_transport_field(
     return figure
 
 
-def plot_critic_loss_spectrum(
-    *,
-    loss_spectrum: pl.DataFrame,
-) -> go.Figure:
-    figure = go.Figure()
-    figure.add_trace(
-        go.Scatter(
-            x=loss_spectrum["t"].to_list(),
-            y=loss_spectrum["noise_prediction_mse"].to_list(),
-            mode="lines+markers",
-            line={"color": "#1f77b4", "width": 2.0},
-            marker={"size": 7},
-            name="noise prediction mse",
-        )
-    )
-    figure.update_layout(
-        title="Critic loss spectrum",
-        template="plotly_white",
-        width=1000,
-        height=500,
-        xaxis={"title": "t"},
-        yaxis={"title": "noise prediction mse"},
-    )
-    return figure
-
-
-def history_plot_values(
-    *,
-    history: pl.DataFrame,
-    column: str,
-) -> list[float | None]:
-    values = []
-    for value in history[column].to_list():
-        if isinstance(value, float) and value != value:
-            values.append(None)
-        else:
-            values.append(float(value))
-    return values
-
-
-def plot_constraint_history(
-    *,
-    history: pl.DataFrame,
-) -> go.Figure:
-    steps = history["step"].to_list()
-    figure = make_subplots(specs=[[{"secondary_y": True}]])
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="data_cycle_loss"),
-            mode="lines",
-            line={"color": "#1f77b4", "width": 2.0},
-            name="data cycle loss",
-        ),
-        secondary_y=False,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="prior_cycle_loss"),
-            mode="lines",
-            line={"color": "#ff7f0e", "width": 2.0},
-            name="prior cycle loss",
-        ),
-        secondary_y=False,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="data_dual"),
-            mode="lines",
-            line={"color": "#2ca02c", "width": 2.0},
-            name="data dual",
-        ),
-        secondary_y=True,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="prior_dual"),
-            mode="lines",
-            line={"color": "#d62728", "width": 2.0},
-            name="prior dual",
-        ),
-        secondary_y=True,
-    )
-    figure.update_layout(
-        title="Constraint losses and dual variables",
-        template="plotly_white",
-        width=1100,
-        height=500,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-    )
-    figure.update_xaxes(title_text="step")
-    figure.update_yaxes(title_text="loss", secondary_y=False)
-    figure.update_yaxes(title_text="dual", secondary_y=True)
-    return figure
-
-
-def plot_transport_history(
-    *,
-    history: pl.DataFrame,
-) -> go.Figure:
-    steps = history["step"].to_list()
-    figure = make_subplots(specs=[[{"secondary_y": True}]])
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="critic_loss"),
-            mode="lines",
-            line={"color": "#1f77b4", "width": 2.0},
-            name="critic loss",
-            connectgaps=True,
-        ),
-        secondary_y=False,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="transport_field_norm"),
-            mode="lines+markers",
-            line={"color": "#ff7f0e", "width": 2.5, "dash": "dash"},
-            marker={"size": 4, "color": "#ff7f0e"},
-            name="transport field norm",
-            connectgaps=True,
-        ),
-        secondary_y=True,
-    )
-    figure.update_layout(
-        title="Transport field norm and critic loss",
-        template="plotly_white",
-        width=1100,
-        height=500,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-    )
-    figure.update_xaxes(title_text="step")
-    figure.update_yaxes(title_text="critic loss", secondary_y=False)
-    figure.update_yaxes(title_text="transport field norm", secondary_y=True)
-    return figure
-
-
-def plot_generation_statistics_history(
-    *,
-    history: pl.DataFrame,
-) -> go.Figure:
-    steps = history["step"].to_list()
-    figure = make_subplots(specs=[[{"secondary_y": True}]])
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="generated_pixel_mean"),
-            mode="lines",
-            line={"color": "#2ca02c", "width": 2.0},
-            name="generated pixel mean",
-            connectgaps=True,
-        ),
-        secondary_y=False,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="generated_pixel_std"),
-            mode="lines",
-            line={"color": "#9467bd", "width": 2.0},
-            name="generated pixel std",
-            connectgaps=True,
-        ),
-        secondary_y=False,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=steps,
-            y=history_plot_values(history=history, column="generated_out_of_range_fraction"),
-            mode="lines+markers",
-            line={"color": "#d62728", "width": 2.5, "dash": "dash"},
-            marker={"size": 4, "color": "#d62728"},
-            name="generated out-of-range fraction",
-            connectgaps=True,
-        ),
-        secondary_y=True,
-    )
-    figure.update_layout(
-        title="Generated sample statistics",
-        template="plotly_white",
-        width=1100,
-        height=500,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-    )
-    figure.update_xaxes(title_text="step")
-    figure.update_yaxes(title_text="pixel statistics", secondary_y=False)
-    figure.update_yaxes(title_text="fraction", secondary_y=True)
-    return figure
-
-
 def write_constraint_monitor_artifacts(
     *,
     data_config: MNISTDataConfig,
@@ -860,7 +665,6 @@ def write_critic_monitor_artifacts(
     transport_grid_xs: torch.Tensor,
     transport_grid_ys: torch.Tensor,
     transport_grid_projection: torch.Tensor,
-    loss_spectrum: pl.DataFrame,
     num_contour_lines: int,
 ) -> None:
     score_folder = output_folder / "score_snapshots"
@@ -898,15 +702,6 @@ def write_critic_monitor_artifacts(
         plot_type="transport",
     )
 
-    loss_spectrum_figure = plot_critic_loss_spectrum(
-        loss_spectrum=loss_spectrum,
-    )
-    write_plot_artifacts(
-        output_folder=output_folder,
-        figure=loss_spectrum_figure,
-        plot_type="loss_spectrum",
-    )
-
 
 def write_integrated_monitor_artifacts(
     *,
@@ -915,7 +710,6 @@ def write_integrated_monitor_artifacts(
     generated_samples: torch.Tensor,
     generated_grid_rows: int,
     generated_grid_cols: int,
-    recent_history: pl.DataFrame,
 ) -> None:
     generated_figure = plot_generated_grid(
         data_config=data_config,
@@ -929,43 +723,15 @@ def write_integrated_monitor_artifacts(
         plot_type="generated_samples",
     )
 
-    constraint_history_figure = plot_constraint_history(history=recent_history)
-    write_plot_artifacts(
-        output_folder=output_folder,
-        figure=constraint_history_figure,
-        plot_type="constraint_history",
-    )
-
-    transport_history_figure = plot_transport_history(history=recent_history)
-    write_plot_artifacts(
-        output_folder=output_folder,
-        figure=transport_history_figure,
-        plot_type="transport_history",
-    )
-
-    generation_stats_figure = plot_generation_statistics_history(
-        history=recent_history,
-    )
-    write_plot_artifacts(
-        output_folder=output_folder,
-        figure=generation_stats_figure,
-        plot_type="generation_statistics",
-    )
-
 
 __all__ = [
     "build_latent_grid",
     "flatten_latents",
-    "history_plot_values",
-    "plot_constraint_history",
-    "plot_critic_loss_spectrum",
     "plot_critic_score_snapshot",
     "plot_generated_grid",
-    "plot_generation_statistics_history",
     "plot_latent_scatter",
     "plot_reconstruction_grid",
     "plot_transport_field",
-    "plot_transport_history",
     "project_latents_to_pca_plane",
     "project_latent_vectors_to_pca_plane",
     "write_constraint_monitor_artifacts",
