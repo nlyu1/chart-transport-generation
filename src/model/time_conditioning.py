@@ -90,8 +90,8 @@ class TimeConditioningConfig(ModelConfig):
             raise ValueError("max_t_lambda must be positive")
         if self.min_t_lambda > self.max_t_lambda:
             raise ValueError("min_t_lambda must be <= max_t_lambda")
-        if self.sinusoidal_dim <= 0:
-            raise ValueError("sinusoidal_dim must be positive")
+        if self.sinusoidal_dim < 2:
+            raise ValueError("sinusoidal_dim must be at least 2")
         if self.hidden_dim <= 0:
             raise ValueError("hidden_dim must be positive")
         if self.output_dim <= 0:

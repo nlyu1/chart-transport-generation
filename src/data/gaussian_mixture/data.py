@@ -33,6 +33,8 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         offset: float,
         ambient_dimension: int,
     ) -> Self:
+        if ambient_dimension < 2:
+            raise ValueError("ambient_dimension must be at least 2")
         raw = torch.randn(ambient_dimension, 2)
         projection, _ = torch.linalg.qr(raw, mode="reduced")
         projection = projection[:, :2]

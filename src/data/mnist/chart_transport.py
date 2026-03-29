@@ -6,7 +6,7 @@ from typing import Self
 from src.chart_transport.aux_loss import ChartPretrainConfig, CriticLossConfig
 from src.chart_transport.base import ChartTransportConfig, ChartTransportLossConfig
 from src.chart_transport.constraint import (
-    LagrangianConstraintConfig,
+    LossConstraintConfig,
     ManifoldConstraintConfig,
 )
 from src.chart_transport.field import UniformVelocityMatchingSchedule
@@ -106,10 +106,9 @@ def get_canonical_chart_transport_config(
         precision=prior_precision,
     )
 
-    constraint_method = LagrangianConstraintConfig(
-        data_constraint_budget_per_dim=1e-2 / (data_config.data_numel() ** 0.5),
-        prior_constraint_budget_per_dim=1e-2 / (latent_dimension**0.5),
-        dual_variable_lr=5e-3,
+    constraint_method = LossConstraintConfig(
+        data_loss_weight=1.0,
+        prior_loss_weight=1.0,
     )
     constraint_config = ManifoldConstraintConfig(
         huber_delta=2.0,
