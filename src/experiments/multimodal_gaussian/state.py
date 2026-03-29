@@ -61,10 +61,14 @@ class MultimodalTrainingRuntime:
         self,
         *,
         step: int,
+        run_constraint_monitor: bool,
+        run_conditioning_monitor: bool,
     ) -> dict[str, float]:
         return chart_pretrain_eval_step_(
             rt=self,
             step=step,
+            run_constraint_monitor=run_constraint_monitor,
+            run_conditioning_monitor=run_conditioning_monitor,
         )
 
     def chart_pretrain(

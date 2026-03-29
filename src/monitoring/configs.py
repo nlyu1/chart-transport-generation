@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jaxtyping import Float
-from jaxtyping import Int
+from jaxtyping import Float, Int
 from torch import Tensor
 
 from src.config.base import BaseConfig
@@ -13,7 +12,25 @@ if TYPE_CHECKING:
     import torch.nn as nn
 
 
-class ConstraintMonitorConfig(BaseConfig):
+class BaseMonitorComponentConfig(BaseConfig):
+    activate_on_steps: list[int]
+
+    def should_activate(
+        self,
+        *,
+        step: int,
+        total_steps: int,
+        every_n_steps: int,
+    ) -> bool:
+        return (
+            step in self.activate_on_steps
+            or step == 1
+            or step == total_steps
+            or step % every_n_steps == 0
+        )
+
+
+class ConstraintMonitorConfig(BaseMonitorComponentConfig):
     """
     Generates two subplots:
     1. (data, reconstruction).
@@ -44,7 +61,7 @@ class ConstraintMonitorConfig(BaseConfig):
         )
 
 
-class CriticMonitorConfig(BaseConfig):
+class CriticMonitorConfig(BaseMonitorComponentConfig):
     """
     Config for visualizing the score implied by the critic. By one plot, we mean "html + png"
     1. Saves one plot for each sample_t_values, with two arrows attached to each point
@@ -59,9 +76,28 @@ class CriticMonitorConfig(BaseConfig):
     num_contour_lines: int
     n_data_latents_per_mode: int
     n_vectors_per_mode: int
+    planar: bool
+    transport_grid_resolution: int
+    transport_num_time_samples: int
+
+    def apply_to(
+        self,
+        *,
+        rt,
+        step: int,
+        stage: str,
+    ) -> dict[str, float]:
+        from src.monitoring.critic import apply_critic_monitor
+
+        return apply_critic_monitor(
+            config=self,
+            rt=rt,
+            step=step,
+            stage=stage,
+        )
 
 
-class SamplingMonitorConfig(BaseConfig):
+class SamplingMonitorConfig(BaseMonitorComponentConfig):
     """
     Integrated training needs to execute constraint-monitor, critic-monitor, and
     save a scatterplot of the generated samples.
@@ -71,7 +107,7 @@ class SamplingMonitorConfig(BaseConfig):
     n_data_samples_per_mode: int
 
 
-class ConditioningMonitorConfig(BaseConfig):
+class ConditioningMonitorConfig(BaseMonitorComponentConfig):
     """
     Config for determining the distribution of singular values
     """
@@ -109,7 +145,7 @@ class ConditioningMonitorConfig(BaseConfig):
         )
 
 
-class MonitorScheduleConfig(BaseConfig):
+class MonitorScheduleConfig(BaseMonitorComponentConfig):
     """
     Chart pretrain executes (conditioning, constraint)
     Critic pretrain executes (critic monitoring)

@@ -14,7 +14,7 @@ class ChartTransportSchedulingConfig(BaseConfig):
 
     pretrain_chart_n_steps: int
     pretrain_critic_n_steps: int
-    update_chart_every_n_critic_steps: int
+    n_critic_updates_every_transport_step: int
 
 
 __all__ = ["ChartTransportSchedulingConfig"]

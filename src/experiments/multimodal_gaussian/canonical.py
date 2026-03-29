@@ -15,13 +15,11 @@ from src.experiments.multimodal_gaussian.monitoring.config import MonitorConfig
 from src.experiments.multimodal_gaussian.monitoring.constraint import (
     GaussianConstraintMonitorConfig,
 )
-from src.experiments.multimodal_gaussian.monitoring.critic import (
-    GaussianCriticMonitorConfig,
-)
 from src.model.mlp import StackedResidualMLPConfig
 from src.model.time_conditioning import TimeConditioningConfig
 from src.monitoring.configs import (
     ConditioningMonitorConfig,
+    CriticMonitorConfig,
     MonitorScheduleConfig,
     SamplingMonitorConfig,
 )
@@ -83,7 +81,7 @@ def get_canonical_chart_transport_configs(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=2000,
         pretrain_critic_n_steps=2000,
-        update_chart_every_n_critic_steps=3,
+        n_critic_updates_every_transport_step=3,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(
@@ -148,28 +146,34 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
     return MonitorConfig(
         use_wandb=True,
         constraint_monitor_config=GaussianConstraintMonitorConfig(
+            activate_on_steps=[],
             n_sample_pairs_per_mode=500,
             n_data_latents_per_mode=500,
             planar=False,
         ),
-        critic_monitor_config=GaussianCriticMonitorConfig(
+        critic_monitor_config=CriticMonitorConfig(
+            activate_on_steps=[1, 2, 5, 10, 20, 100],
             sample_t_values=[0.03, 0.2],
             num_contour_lines=10,
             n_data_latents_per_mode=500,
             n_vectors_per_mode=100,
+            planar=False,
             transport_grid_resolution=31,
             transport_num_time_samples=19,
         ),
         sampling_monitor_config=SamplingMonitorConfig(
+            activate_on_steps=[],
             n_generated_samples=3000,
             n_data_samples_per_mode=1000,
         ),
         conditioning_monitor_config=ConditioningMonitorConfig(
+            activate_on_steps=[],
             n_data_samples_per_mode=500,
             num_power_iterations=32,
             microbatch_size=128,
         ),
         schedule_config=MonitorScheduleConfig(
+            activate_on_steps=[],
             log_every_n_steps_chart_pretrain=2000,
             log_every_n_steps_critic_pretrain=2000,
             log_every_n_steps_integrated=4000,

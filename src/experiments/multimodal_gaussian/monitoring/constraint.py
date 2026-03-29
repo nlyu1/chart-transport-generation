@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jaxtyping import Float, Int
@@ -9,35 +10,16 @@ import torch
 from torch import Tensor
 
 from src.monitoring.configs import ConstraintMonitorConfig
-from src.monitoring.utils import marker_color, step_folder, write_figure
+from src.monitoring.utils import (
+    marker_color,
+    sample_mode_batch,
+    step_folder,
+    write_figure,
+    write_mode_value_parquet,
+)
 
 if TYPE_CHECKING:
     from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
-
-
-def _sample_mode_batch(
-    *,
-    rt: "MultimodalTrainingRuntime",
-    batch_size_per_mode: int,
-) -> tuple[Float[Tensor, "batch ambient_dim"], Int[Tensor, "batch"]]:
-    samples = []
-    labels = []
-    for mode_id in range(rt.runtime_data_config.num_modes):
-        samples.append(
-            rt.runtime_data_config.sample_class(
-                mode_id=mode_id,
-                batch_size=batch_size_per_mode,
-            )
-        )
-        labels.append(
-            torch.full(
-                (batch_size_per_mode,),
-                fill_value=mode_id,
-                device=rt.device,
-                dtype=torch.long,
-            )
-        )
-    return torch.cat(samples, dim=0), torch.cat(labels, dim=0)
 
 
 def _mode_mask(
@@ -157,6 +139,26 @@ def _reconstruction_figure(
     )
     return figure
 
+
+def _write_reconstruction_error_parquet(
+    *,
+    step_root: Path,
+    labels: Int[Tensor, "batch"],
+    reconstruction_error: Float[Tensor, "batch"],
+) -> None:
+    write_mode_value_parquet(
+        path=(
+            step_root
+            / "numbers"
+            / "constraint_reconstruction"
+            / "reconstruction_error_norms.parquet"
+        ),
+        mode_ids=labels,
+        value_column_name="reconstruction_error_norm",
+        values=reconstruction_error,
+    )
+
+
 class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
     def apply_to(
         self,
@@ -165,8 +167,9 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
         step: int,
     ) -> dict[str, float]:
         with torch.no_grad():
-            samples, labels = _sample_mode_batch(
-                rt=rt,
+            samples, labels = sample_mode_batch(
+                data_config=rt.runtime_data_config,
+                device=rt.device,
                 batch_size_per_mode=self.n_sample_pairs_per_mode,
             )
             latents = rt.chart_transport_model.encoder(samples).float()
@@ -183,8 +186,9 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
                 .float()
             )
 
-            latent_samples, latent_labels = _sample_mode_batch(
-                rt=rt,
+            latent_samples, latent_labels = sample_mode_batch(
+                data_config=rt.runtime_data_config,
+                device=rt.device,
                 batch_size_per_mode=self.n_data_latents_per_mode,
             )
             latent_values = rt.chart_transport_model.encoder(latent_samples).float()
@@ -199,6 +203,11 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
                 labels=labels,
             ),
             path_stem=folder / "data_reconstruction",
+        )
+        _write_reconstruction_error_parquet(
+            step_root=folder,
+            labels=labels,
+            reconstruction_error=reconstruction_error,
         )
         self.save_latent_plot_to(
             latents=latent_values,

@@ -30,6 +30,13 @@ def _runtime_precision_context(
         yield
 
 
+def _format_metrics_summary(
+    *,
+    metrics: dict[str, float],
+) -> str:
+    return ", ".join(f"{key}={value:.4f}" for key, value in metrics.items())
+
+
 def _should_log_monitor(
     *,
     step: int,
@@ -37,13 +44,6 @@ def _should_log_monitor(
     every_n_steps: int,
 ) -> bool:
     return step == 1 or step % every_n_steps == 0 or step == total_steps
-
-
-def _format_metrics_summary(
-    *,
-    metrics: dict[str, float],
-) -> str:
-    return ", ".join(f"{key}={value:.4f}" for key, value in metrics.items())
 
 
 def _log_wandb_scalars(
@@ -171,6 +171,8 @@ def chart_pretrain_eval_step_(
     *,
     rt: "MultimodalTrainingRuntime",
     step: int,
+    run_constraint_monitor: bool,
+    run_conditioning_monitor: bool,
 ) -> dict[str, float]:
     encoder = rt.chart_transport_model.encoder
     decoder = rt.chart_transport_model.decoder
@@ -180,25 +182,29 @@ def chart_pretrain_eval_step_(
     encoder.eval()
     decoder.eval()
 
+    monitor_metrics: dict[str, float] = {}
     with _runtime_precision_context(rt=rt):
-        constraint_metrics = rt.tc.monitor_config.constraint_monitor_config.apply_to(
-            rt=rt,
-            step=step,
-        )
-        conditioning_metrics = rt.tc.monitor_config.conditioning_monitor_config.apply_to(
-            rt=rt,
-            step=step,
-        )
+        if run_constraint_monitor:
+            monitor_metrics.update(
+                rt.tc.monitor_config.constraint_monitor_config.apply_to(
+                    rt=rt,
+                    step=step,
+                )
+            )
+        if run_conditioning_monitor:
+            monitor_metrics.update(
+                rt.tc.monitor_config.conditioning_monitor_config.apply_to(
+                    rt=rt,
+                    step=step,
+                )
+            )
 
     if encoder_was_training:
         encoder.train()
     if decoder_was_training:
         decoder.train()
 
-    return {
-        **constraint_metrics,
-        **conditioning_metrics,
-    }
+    return monitor_metrics
 
 
 def chart_pretrain_(
@@ -235,7 +241,11 @@ def chart_pretrain_(
             total_steps=total_steps,
             every_n_steps=log_every_n_steps,
         ):
-            monitor_metrics = rt._chart_pretrain_eval_step(step=step)
+            monitor_metrics = rt._chart_pretrain_eval_step(
+                step=step,
+                run_constraint_monitor=True,
+                run_conditioning_monitor=True,
+            )
             latest_metrics.update(
                 {f"monitor_{key}": value for key, value in monitor_metrics.items()}
             )

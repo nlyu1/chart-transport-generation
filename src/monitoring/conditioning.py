@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import plotly.graph_objects as go
+import polars as pl
 import torch
 import torch.nn as nn
-from jaxtyping import Float
-from jaxtyping import Int
-import plotly.graph_objects as go
+from jaxtyping import Float, Int
 from plotly.subplots import make_subplots
 from torch import Tensor
 from torch.func import functional_call, jvp, vjp, vmap
-import wandb
 
 from src.monitoring.configs import ConditioningMonitorConfig
-from src.monitoring.utils import marker_color, step_folder, write_figure
+from src.monitoring.utils import (
+    marker_color,
+    sample_mode_batch,
+    step_folder,
+    write_figure,
+)
 
 
 def _flatten_batch(
@@ -148,44 +154,63 @@ def largest_jacobian_singular_values(
         )
     return torch.cat(outputs, dim=0)
 
-def _sample_mode_batch(
-    *,
-    rt,
-    batch_size_per_mode: int,
-) -> tuple[Tensor, Int[Tensor, "batch"]]:
-    samples = []
-    labels = []
-    for mode_id in range(rt.runtime_data_config.num_modes):
-        samples.append(
-            rt.runtime_data_config.sample_class(
-                mode_id=mode_id,
-                batch_size=batch_size_per_mode,
-            )
-        )
-        labels.append(
-            torch.full(
-                (batch_size_per_mode,),
-                fill_value=mode_id,
-                device=rt.device,
-                dtype=torch.long,
-            )
-        )
-    return torch.cat(samples, dim=0), torch.cat(labels, dim=0)
 
-
-def _swarm_offsets(
+def _symmetric_stack_positions(
     *,
     count: int,
     device: torch.device,
 ) -> Tensor:
+    if count <= 0:
+        return torch.zeros(0, device=device, dtype=torch.float32)
+    positions = torch.zeros(count, device=device, dtype=torch.float32)
+    if count == 1:
+        return positions
+    levels = torch.arange(1, count, device=device, dtype=torch.float32)
+    magnitudes = torch.div(levels + 1, 2, rounding_mode="floor")
+    signs = torch.where(levels % 2 == 1, 1.0, -1.0)
+    positions[1:] = magnitudes * signs
+    return positions
+
+
+def _beeswarm_offsets(
+    *,
+    values: Float[Tensor, "count"],
+    max_span: float,
+    num_bins: int,
+) -> Tensor:
+    if values.ndim != 1:
+        raise ValueError("values must be one-dimensional")
+    count = int(values.shape[0])
     if count <= 1:
-        return torch.zeros(count, device=device, dtype=torch.float32)
-    left = torch.arange(count, device=device)
-    offsets = torch.div(left + 1, 2, rounding_mode="floor").float()
-    signs = torch.where(left % 2 == 0, 1.0, -1.0)
-    offsets = offsets * signs
-    offsets = offsets / offsets.abs().max().clamp_min(1.0)
-    return 0.24 * offsets
+        return torch.zeros_like(values, dtype=torch.float32)
+    if num_bins <= 0:
+        raise ValueError("num_bins must be positive")
+
+    min_value = values.min()
+    max_value = values.max()
+    if torch.isclose(min_value, max_value):
+        quantized = torch.zeros(count, device=values.device, dtype=torch.long)
+    else:
+        scaled = (values - min_value) / (max_value - min_value)
+        quantized = torch.round((num_bins - 1) * scaled).long()
+
+    offsets = torch.zeros(count, device=values.device, dtype=torch.float32)
+    max_abs_offset = 0.0
+    for bin_id in torch.unique(quantized, sorted=True):
+        bucket_indices = torch.nonzero(quantized == bin_id, as_tuple=False).squeeze(-1)
+        stack_positions = _symmetric_stack_positions(
+            count=int(bucket_indices.shape[0]),
+            device=values.device,
+        )
+        offsets[bucket_indices] = stack_positions
+        if stack_positions.numel() > 0:
+            max_abs_offset = max(
+                max_abs_offset,
+                float(stack_positions.abs().max().item()),
+            )
+    if max_abs_offset == 0.0:
+        return offsets
+    return offsets * (max_span / max_abs_offset)
 
 
 def _conditioning_panel_traces(
@@ -205,9 +230,10 @@ def _conditioning_panel_traces(
         mode_values = singular_values_cpu[mask]
         sorted_indices = torch.argsort(mode_values)
         sorted_values = mode_values[sorted_indices]
-        offsets = _swarm_offsets(
-            count=int(sorted_values.shape[0]),
-            device=sorted_values.device,
+        offsets = _beeswarm_offsets(
+            values=sorted_values,
+            max_span=0.32,
+            num_bins=100,
         )
         y_values = torch.full_like(sorted_values, float(mode_id)) + offsets
         figure.add_trace(
@@ -224,8 +250,7 @@ def _conditioning_panel_traces(
                 name=f"mode {mode_id}",
                 customdata=[[mode_id]] * int(sorted_values.shape[0]),
                 hovertemplate=(
-                    "mode=%{customdata[0]}"
-                    + "<br>sigma_max=%{x:.4f}<extra></extra>"
+                    "class=%{customdata[0]}" + "<br>sigma_max=%{x:.4f}<extra></extra>"
                 ),
                 showlegend=False,
             ),
@@ -268,7 +293,7 @@ def conditioning_figure(
     figure.update_xaxes(title="Largest singular value", row=1, col=1)
     figure.update_xaxes(title="Largest singular value", row=1, col=2)
     figure.update_yaxes(
-        title="Mode",
+        title="Class",
         tickmode="array",
         tickvals=tick_values,
         ticktext=tick_text,
@@ -289,7 +314,7 @@ def conditioning_figure(
         width=1100,
         height=max(480, 120 * num_modes),
         margin={"l": 60, "r": 20, "t": 60, "b": 40},
-        title="Encoder and decoder conditioning by mode",
+        title="Encoder and decoder conditioning by class",
     )
     return figure
 
@@ -305,14 +330,44 @@ def _conditioning_summary(
     }
 
 
+def _write_max_singular_values_parquet(
+    *,
+    step_root: Path,
+    labels: Int[Tensor, "batch"],
+    encoder_singular_values: Float[Tensor, "batch"],
+    decoder_singular_values: Float[Tensor, "batch"],
+) -> None:
+    path = step_root / "numbers" / "max_singular_values.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode_ids = labels.detach().cpu().long().tolist()
+    frame = pl.DataFrame(
+        {
+            "kind": ["encoder"] * len(mode_ids) + ["decoder"] * len(mode_ids),
+            "mode_id": mode_ids + mode_ids,
+            "sigma_max": (
+                encoder_singular_values.detach().cpu().float().tolist()
+                + decoder_singular_values.detach().cpu().float().tolist()
+            ),
+        }
+    ).with_columns(
+        pl.col("kind").cast(pl.Categorical),
+        pl.col("mode_id").cast(pl.Int64),
+        pl.col("sigma_max").cast(pl.Float32),
+    ).sort(
+        by=["kind", "mode_id", "sigma_max"],
+    )
+    frame.write_parquet(path)
+
+
 def apply_conditioning_monitor(
     *,
     config: ConditioningMonitorConfig,
     rt,
     step: int,
 ) -> dict[str, float]:
-    samples, labels = _sample_mode_batch(
-        rt=rt,
+    samples, labels = sample_mode_batch(
+        data_config=rt.runtime_data_config,
+        device=rt.device,
         batch_size_per_mode=config.n_data_samples_per_mode,
     )
     with torch.no_grad():
@@ -337,16 +392,12 @@ def apply_conditioning_monitor(
         ),
         path_stem=path_stem,
     )
-
-    if rt.tc.monitor_config.use_wandb:
-        rt.wandb_run.log(
-            {
-                "pretrain/local_step": step,
-                "pretrain/conditioning_plot": wandb.Image(
-                    str(path_stem.with_suffix(".png"))
-                ),
-            }
-        )
+    _write_max_singular_values_parquet(
+        step_root=folder,
+        labels=labels,
+        encoder_singular_values=encoder_singular_values,
+        decoder_singular_values=decoder_singular_values,
+    )
 
     return {
         **_conditioning_summary(
