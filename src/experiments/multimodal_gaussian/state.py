@@ -20,6 +20,11 @@ from src.experiments.multimodal_gaussian.chart_pretrain import (
     chart_pretrain_eval_step_,
     chart_pretrain_train_step_,
 )
+from src.experiments.multimodal_gaussian.critic_pretrain import (
+    critic_pretrain_,
+    critic_pretrain_eval_step_,
+    critic_pretrain_train_step_,
+)
 
 
 @dataclass(
@@ -66,6 +71,26 @@ class MultimodalTrainingRuntime:
         self,
     ) -> dict[str, float]:
         return chart_pretrain_(rt=self)
+
+    def _critic_pretrain_train_step(
+        self,
+    ) -> dict[str, float]:
+        return critic_pretrain_train_step_(rt=self)
+
+    def _critic_pretrain_eval_step(
+        self,
+        *,
+        step: int,
+    ) -> dict[str, float]:
+        return critic_pretrain_eval_step_(
+            rt=self,
+            step=step,
+        )
+
+    def critic_pretrain(
+        self,
+    ) -> dict[str, float]:
+        return critic_pretrain_(rt=self)
 
     @classmethod
     def initialize(

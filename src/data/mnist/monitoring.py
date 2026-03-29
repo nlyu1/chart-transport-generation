@@ -223,7 +223,7 @@ def add_digit_scatter_traces(
                 x=points_float[mask, 0].tolist(),
                 y=points_float[mask, 1].tolist(),
                 mode="markers",
-                name=f"digit {digit_id}",
+                name=str(digit_id),
                 showlegend=showlegend,
                 marker={
                     "size": size,
@@ -265,7 +265,7 @@ def add_digit_quiver_traces(
             scale=1.0,
             arrow_scale=0.25,
             line_color=DIGIT_COLORS[digit_id],
-            name=f"digit {digit_id}",
+            name=str(digit_id),
         )
         for trace in quiver.data:
             trace.showlegend = False
@@ -305,7 +305,7 @@ def add_digit_quiver_hover_traces(
                 customdata=vector_norms_float[mask].unsqueeze(-1).tolist(),
                 hovertemplate="arrow_norm=%{customdata[0]:.4f}<extra></extra>",
                 showlegend=False,
-                name=f"digit {digit_id} hover",
+                name=str(digit_id),
             )
         )
 
@@ -513,7 +513,6 @@ def plot_critic_score_snapshot(
     )
     x_min, x_max, y_min, y_max = latent_square_limits(projected_cloud_latents, padding=0.18)
     figure.update_layout(
-        title=f"Critic score snapshot at t={t_value:.2f} (PCA view)",
         template="plotly_white",
         width=900,
         height=900,
@@ -606,7 +605,6 @@ def plot_transport_field(
     )
     x_min, x_max, y_min, y_max = latent_square_limits(projected_cloud_latents, padding=0.18)
     figure.update_layout(
-        title="Noise-averaged clean-latent transport field (PCA view)",
         template="plotly_white",
         width=900,
         height=900,

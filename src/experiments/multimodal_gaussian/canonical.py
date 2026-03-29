@@ -12,16 +12,16 @@ from src.chart_transport.scheduling import ChartTransportSchedulingConfig
 from src.chart_transport.transport_loss import TransportLossConfig
 from src.data.gaussian_mixture.data import MultimodalGaussianDataConfig
 from src.experiments.multimodal_gaussian.monitoring.config import MonitorConfig
-from src.experiments.multimodal_gaussian.monitoring.conditioning import (
-    GaussianConditioningMonitorConfig,
-)
 from src.experiments.multimodal_gaussian.monitoring.constraint import (
     GaussianConstraintMonitorConfig,
+)
+from src.experiments.multimodal_gaussian.monitoring.critic import (
+    GaussianCriticMonitorConfig,
 )
 from src.model.mlp import StackedResidualMLPConfig
 from src.model.time_conditioning import TimeConditioningConfig
 from src.monitoring.configs import (
-    CriticMonitorConfig,
+    ConditioningMonitorConfig,
     MonitorScheduleConfig,
     SamplingMonitorConfig,
 )
@@ -150,19 +150,21 @@ def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
         constraint_monitor_config=GaussianConstraintMonitorConfig(
             n_sample_pairs_per_mode=500,
             n_data_latents_per_mode=500,
-            planar=True,
+            planar=False,
         ),
-        critic_monitor_config=CriticMonitorConfig(
+        critic_monitor_config=GaussianCriticMonitorConfig(
             sample_t_values=[0.03, 0.2],
             num_contour_lines=10,
             n_data_latents_per_mode=500,
             n_vectors_per_mode=100,
+            transport_grid_resolution=31,
+            transport_num_time_samples=19,
         ),
         sampling_monitor_config=SamplingMonitorConfig(
             n_generated_samples=3000,
             n_data_samples_per_mode=1000,
         ),
-        conditioning_monitor_config=GaussianConditioningMonitorConfig(
+        conditioning_monitor_config=ConditioningMonitorConfig(
             n_data_samples_per_mode=500,
             num_power_iterations=32,
             microbatch_size=128,

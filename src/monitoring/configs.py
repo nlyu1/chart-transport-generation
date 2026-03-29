@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jaxtyping import Float
+from jaxtyping import Int
 from torch import Tensor
 
 from src.config.base import BaseConfig
@@ -25,8 +27,21 @@ class ConstraintMonitorConfig(BaseConfig):
     n_data_latents_per_mode: int
     planar: bool
 
-    def save_latent_plot_to(**kwargs) -> None:
-        pass
+    def save_latent_plot_to(
+        self,
+        *,
+        latents: Float[Tensor, "batch latent_dim"],
+        mode_ids: Int[Tensor, "batch"],
+        save_to_folder: Path,
+    ) -> None:
+        from src.monitoring.constraints import save_latent_plot_to
+
+        save_latent_plot_to(
+            config=self,
+            latents=latents,
+            mode_ids=mode_ids,
+            save_to_folder=save_to_folder,
+        )
 
 
 class CriticMonitorConfig(BaseConfig):
@@ -64,6 +79,20 @@ class ConditioningMonitorConfig(BaseConfig):
     n_data_samples_per_mode: int
     num_power_iterations: int
     microbatch_size: int
+
+    def apply_to(
+        self,
+        *,
+        rt,
+        step: int,
+    ) -> dict[str, float]:
+        from src.monitoring.conditioning import apply_conditioning_monitor
+
+        return apply_conditioning_monitor(
+            config=self,
+            rt=rt,
+            step=step,
+        )
 
     def largest_singular_values(
         self,

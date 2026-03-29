@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jaxtyping import Float, Int
@@ -10,48 +9,10 @@ import torch
 from torch import Tensor
 
 from src.monitoring.configs import ConstraintMonitorConfig
+from src.monitoring.utils import marker_color, step_folder, write_figure
 
 if TYPE_CHECKING:
     from src.experiments.multimodal_gaussian.state import MultimodalTrainingRuntime
-
-
-COLOR_BANK = (
-    "#1f77b4",
-    "#ff7f0e",
-    "#2ca02c",
-    "#d62728",
-    "#9467bd",
-    "#8c564b",
-    "#e377c2",
-    "#7f7f7f",
-    "#bcbd22",
-    "#17becf",
-    "#1b9e77",
-    "#d95f02",
-    "#7570b3",
-    "#e7298a",
-    "#66a61e",
-    "#e6ab02",
-)
-
-
-def _step_folder(
-    *,
-    rt: "MultimodalTrainingRuntime",
-    step: int,
-) -> Path:
-    folder = rt.tc.folder / str(step)
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
-
-
-def _write_figure(
-    *,
-    figure: go.Figure,
-    path_stem: Path,
-) -> None:
-    figure.write_html(path_stem.with_suffix(".html"))
-    figure.write_image(path_stem.with_suffix(".png"))
 
 
 def _sample_mode_batch(
@@ -91,43 +52,7 @@ def _marker_color(
     *,
     mode_id: int,
 ) -> str:
-    return COLOR_BANK[mode_id % len(COLOR_BANK)]
-
-
-def _fit_projection_basis(
-    *,
-    values: Float[Tensor, "batch latent_dim"],
-    projection_dim: int,
-) -> tuple[Float[Tensor, "1 latent_dim"], Float[Tensor, "latent_dim projection_dim"]]:
-    center = values.mean(dim=0, keepdim=True)
-    centered = values - center
-    _, _, right_singular_vectors = torch.linalg.svd(
-        centered,
-        full_matrices=False,
-    )
-    basis = right_singular_vectors[:projection_dim].transpose(0, 1).contiguous()
-    if basis.shape[1] < projection_dim:
-        padding = torch.zeros(
-            basis.shape[0],
-            projection_dim - basis.shape[1],
-            device=basis.device,
-            dtype=basis.dtype,
-        )
-        basis = torch.cat([basis, padding], dim=1)
-    return center, basis
-
-
-def _project_latents(
-    *,
-    latents: Float[Tensor, "batch latent_dim"],
-    planar: bool,
-) -> Float[Tensor, "batch proj_dim"]:
-    projection_dim = 2 if planar else 3
-    center, basis = _fit_projection_basis(
-        values=latents,
-        projection_dim=projection_dim,
-    )
-    return (latents - center) @ basis
+    return marker_color(group_id=mode_id)
 
 
 def _reconstruction_figure(
@@ -139,9 +64,9 @@ def _reconstruction_figure(
 ) -> go.Figure:
     figure = make_subplots(
         rows=1,
-        cols=2,
-        subplot_titles=("Data", "Reconstruction"),
+        cols=3,
         horizontal_spacing=0.08,
+        column_widths=[0.34, 0.34, 0.32],
     )
     labels_cpu = labels.cpu()
     samples_cpu = samples_2d.cpu()
@@ -162,7 +87,8 @@ def _reconstruction_figure(
                 x=sample_x,
                 y=sample_y,
                 mode="markers",
-                name=f"mode {mode_id}",
+                name=str(mode_id),
+                legendgroup=str(mode_id),
                 marker={"size": 6, "color": color, "opacity": 0.8},
                 customdata=customdata,
                 hovertemplate=(
@@ -181,7 +107,8 @@ def _reconstruction_figure(
                 x=recon_x,
                 y=recon_y,
                 mode="markers",
-                name=f"mode {mode_id} recon",
+                name=str(mode_id),
+                legendgroup=str(mode_id),
                 marker={
                     "size": 6,
                     "color": color,
@@ -201,101 +128,34 @@ def _reconstruction_figure(
             row=1,
             col=2,
         )
-    figure.update_xaxes(title="plane-x", row=1, col=1)
-    figure.update_xaxes(title="plane-x", row=1, col=2)
-    figure.update_yaxes(title="plane-y", scaleanchor="x", scaleratio=1.0, row=1, col=1)
-    figure.update_yaxes(title="plane-y", scaleanchor="x2", scaleratio=1.0, row=1, col=2)
-    figure.update_layout(
-        template="plotly_white",
-        width=1100,
-        height=520,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-        margin={"l": 40, "r": 20, "t": 70, "b": 40},
-        title="Data-side reconstruction monitor",
-    )
-    return figure
-
-
-def _latent_map_figure(
-    *,
-    projected_latents: Float[Tensor, "batch proj_dim"],
-    latent_norms: Float[Tensor, "batch"],
-    labels: Int[Tensor, "batch"],
-    planar: bool,
-) -> go.Figure:
-    labels_cpu = labels.cpu()
-    projected_cpu = projected_latents.cpu()
-    norms_cpu = latent_norms.cpu().unsqueeze(-1).tolist()
-    if planar:
-        figure = go.Figure()
-        for mode_id in range(int(labels_cpu.max().item()) + 1):
-            mask = _mode_mask(labels=labels_cpu, mode_id=mode_id)
-            if not mask.any():
-                continue
-            figure.add_trace(
-                go.Scatter(
-                    x=projected_cpu[mask, 0].tolist(),
-                    y=projected_cpu[mask, 1].tolist(),
-                    mode="markers",
-                    name=f"mode {mode_id}",
-                    marker={
-                        "size": 6,
-                        "color": _marker_color(mode_id=mode_id),
-                        "opacity": 0.8,
-                    },
-                    customdata=[norms_cpu[index] for index in mask.nonzero().flatten().tolist()],
-                    hovertemplate=(
-                        "mode="
-                        + str(mode_id)
-                        + "<br>pc1=%{x:.3f}<br>pc2=%{y:.3f}<br>"
-                        + "|latent|=%{customdata[0]:.4f}<extra></extra>"
-                    ),
-                )
-            )
-        figure.update_xaxes(title="pc1")
-        figure.update_yaxes(title="pc2", scaleanchor="x", scaleratio=1.0)
-    else:
-        figure = go.Figure()
-        for mode_id in range(int(labels_cpu.max().item()) + 1):
-            mask = _mode_mask(labels=labels_cpu, mode_id=mode_id)
-            if not mask.any():
-                continue
-            figure.add_trace(
-                go.Scatter3d(
-                    x=projected_cpu[mask, 0].tolist(),
-                    y=projected_cpu[mask, 1].tolist(),
-                    z=projected_cpu[mask, 2].tolist(),
-                    mode="markers",
-                    name=f"mode {mode_id}",
-                    marker={
-                        "size": 4,
-                        "color": _marker_color(mode_id=mode_id),
-                        "opacity": 0.8,
-                    },
-                    customdata=[norms_cpu[index] for index in mask.nonzero().flatten().tolist()],
-                    hovertemplate=(
-                        "mode="
-                        + str(mode_id)
-                        + "<br>pc1=%{x:.3f}<br>pc2=%{y:.3f}<br>pc3=%{z:.3f}<br>"
-                        + "|latent|=%{customdata[0]:.4f}<extra></extra>"
-                    ),
-                )
-            )
-        figure.update_scenes(
-            xaxis_title="pc1",
-            yaxis_title="pc2",
-            zaxis_title="pc3",
+        figure.add_trace(
+            go.Histogram(
+                x=error_cpu[mask].tolist(),
+                name=str(mode_id),
+                legendgroup=str(mode_id),
+                marker={"color": color},
+                opacity=0.65,
+                showlegend=False,
+                hovertemplate=(
+                    "mode="
+                    + str(mode_id)
+                    + "<br>recon_error=%{x:.4f}<br>count=%{y}<extra></extra>"
+                ),
+            ),
+            row=1,
+            col=3,
         )
+    figure.update_yaxes(scaleanchor="x", scaleratio=1.0, row=1, col=1)
+    figure.update_yaxes(scaleanchor="x2", scaleratio=1.0, row=1, col=2)
     figure.update_layout(
         template="plotly_white",
-        width=900,
-        height=900,
+        width=1500,
+        height=520,
+        barmode="overlay",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0.0},
-        margin={"l": 20, "r": 20, "t": 60, "b": 20},
-        title="Data latent map",
+        margin={"l": 40, "r": 20, "t": 40, "b": 40},
     )
     return figure
-
 
 class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
     def apply_to(
@@ -328,14 +188,10 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
                 batch_size_per_mode=self.n_data_latents_per_mode,
             )
             latent_values = rt.chart_transport_model.encoder(latent_samples).float()
-            projected_latents = _project_latents(
-                latents=latent_values,
-                planar=self.planar,
-            )
             latent_norms = latent_values.norm(dim=-1).float()
 
-        folder = _step_folder(rt=rt, step=step)
-        _write_figure(
+        folder = step_folder(run_folder=rt.tc.folder, step=step)
+        write_figure(
             figure=_reconstruction_figure(
                 samples_2d=samples_2d,
                 reconstructions_2d=reconstructions_2d,
@@ -344,14 +200,10 @@ class GaussianConstraintMonitorConfig(ConstraintMonitorConfig):
             ),
             path_stem=folder / "data_reconstruction",
         )
-        _write_figure(
-            figure=_latent_map_figure(
-                projected_latents=projected_latents,
-                latent_norms=latent_norms,
-                labels=latent_labels,
-                planar=self.planar,
-            ),
-            path_stem=folder / "data_latent_map",
+        self.save_latent_plot_to(
+            latents=latent_values,
+            mode_ids=latent_labels,
+            save_to_folder=folder,
         )
         return {
             "constraint_reconstruction_mean": reconstruction_error.mean().item(),
