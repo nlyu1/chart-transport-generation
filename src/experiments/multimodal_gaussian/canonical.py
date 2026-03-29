@@ -11,8 +11,20 @@ from src.chart_transport.model import ChartTransportModelConfig
 from src.chart_transport.scheduling import ChartTransportSchedulingConfig
 from src.chart_transport.transport_loss import TransportLossConfig
 from src.data.gaussian_mixture.data import MultimodalGaussianDataConfig
+from src.experiments.multimodal_gaussian.monitoring.config import MonitorConfig
+from src.experiments.multimodal_gaussian.monitoring.conditioning import (
+    GaussianConditioningMonitorConfig,
+)
+from src.experiments.multimodal_gaussian.monitoring.constraint import (
+    GaussianConstraintMonitorConfig,
+)
 from src.model.mlp import StackedResidualMLPConfig
 from src.model.time_conditioning import TimeConditioningConfig
+from src.monitoring.configs import (
+    CriticMonitorConfig,
+    MonitorScheduleConfig,
+    SamplingMonitorConfig,
+)
 from src.priors.anchored import AnchoredGaussianScaleMixturePriorConfig
 
 
@@ -132,4 +144,38 @@ def get_canonical_chart_transport_configs(
     )
 
 
-__all__ = ["get_canonical_chart_transport_configs"]
+def get_canonical_chart_transport_monitor_configs() -> MonitorConfig:
+    return MonitorConfig(
+        use_wandb=True,
+        constraint_monitor_config=GaussianConstraintMonitorConfig(
+            n_sample_pairs_per_mode=500,
+            n_data_latents_per_mode=500,
+            planar=True,
+        ),
+        critic_monitor_config=CriticMonitorConfig(
+            sample_t_values=[0.03, 0.2],
+            num_contour_lines=10,
+            n_data_latents_per_mode=500,
+            n_vectors_per_mode=100,
+        ),
+        sampling_monitor_config=SamplingMonitorConfig(
+            n_generated_samples=3000,
+            n_data_samples_per_mode=1000,
+        ),
+        conditioning_monitor_config=GaussianConditioningMonitorConfig(
+            n_data_samples_per_mode=500,
+            num_power_iterations=32,
+            microbatch_size=128,
+        ),
+        schedule_config=MonitorScheduleConfig(
+            log_every_n_steps_chart_pretrain=2000,
+            log_every_n_steps_critic_pretrain=2000,
+            log_every_n_steps_integrated=4000,
+        ),
+    )
+
+
+__all__ = [
+    "get_canonical_chart_transport_configs",
+    "get_canonical_chart_transport_monitor_configs",
+]

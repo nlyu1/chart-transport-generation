@@ -57,6 +57,19 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         offset_vector[0] = self.offset
         return offset_vector
 
+    def to(
+        self,
+        *,
+        device: torch.device,
+    ) -> Self:
+        return self.replace(
+            path="isometry",
+            replacement=self.isometry.to(device=device),
+        ).replace(
+            path="projection",
+            replacement=self.projection.to(device=device),
+        )
+
     def mode_centers_2d(self) -> Float[Tensor, "num_modes 2"]:
         angles = torch.linspace(
             0.0,

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from jaxtyping import Float
-from pydantic import model_validator
 from torch import Tensor
 
 from src.config.base import BaseConfig
@@ -66,22 +65,11 @@ class ConditioningMonitorConfig(BaseConfig):
     num_power_iterations: int
     microbatch_size: int
 
-    @model_validator(mode="after")
-    def _validate_config(self) -> "ConditioningMonitorConfig":
-        if self.n_data_samples_per_mode <= 0:
-            raise ValueError("n_data_samples_per_mode must be positive")
-        if self.num_power_iterations <= 0:
-            raise ValueError("num_power_iterations must be positive")
-        if self.microbatch_size <= 0:
-            raise ValueError("microbatch_size must be positive")
-        return self
-
     def largest_singular_values(
         self,
         *,
         model: "nn.Module",
         inputs: Float[Tensor, "batch ..."],
-        eps: float = 1e-8,
     ) -> Float[Tensor, "batch"]:
         from src.monitoring.conditioning import largest_jacobian_singular_values
 
@@ -89,7 +77,6 @@ class ConditioningMonitorConfig(BaseConfig):
             model=model,
             inputs=inputs,
             config=self,
-            eps=eps,
         )
 
 
@@ -106,7 +93,8 @@ class MonitorScheduleConfig(BaseConfig):
 
 
 class BaseMonitorConfig(BaseConfig):
-    critic_monitor_config: CriticMonitorConfig
     constraint_monitor_config: ConstraintMonitorConfig
-    integrated_monitor_config: SamplingMonitorConfig
+    critic_monitor_config: CriticMonitorConfig
+    sampling_monitor_config: SamplingMonitorConfig
     conditioning_monitor_config: ConditioningMonitorConfig
+    schedule_config: MonitorScheduleConfig

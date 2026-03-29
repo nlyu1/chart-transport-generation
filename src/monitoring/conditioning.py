@@ -13,7 +13,9 @@ def _flatten_batch(
     tensor: Tensor,
 ) -> Tensor:
     if tensor.ndim < 2:
-        raise ValueError("expected tensor with batch dimension and at least one data dimension")
+        raise ValueError(
+            "expected tensor with batch dimension and at least one data dimension"
+        )
     return tensor.reshape(tensor.shape[0], -1)
 
 
@@ -113,7 +115,6 @@ def largest_jacobian_singular_values(
     model: nn.Module,
     inputs: Float[Tensor, "batch ..."],
     config: ConditioningMonitorConfig,
-    eps: float = 1e-8,
 ) -> Float[Tensor, "batch"]:
     """
     Return matrix-free estimates of the largest per-sample Jacobian singular value.
@@ -128,8 +129,6 @@ def largest_jacobian_singular_values(
         raise ValueError("config.num_power_iterations must be positive")
     if config.microbatch_size <= 0:
         raise ValueError("config.microbatch_size must be positive")
-    if eps <= 0.0:
-        raise ValueError("eps must be positive")
 
     outputs = []
     for batch_start in range(0, inputs.shape[0], config.microbatch_size):
@@ -139,7 +138,7 @@ def largest_jacobian_singular_values(
                 model=model,
                 inputs=inputs[batch_start:batch_stop],
                 num_power_iterations=config.num_power_iterations,
-                eps=eps,
+                eps=1e-8,
             )
         )
     return torch.cat(outputs, dim=0)
