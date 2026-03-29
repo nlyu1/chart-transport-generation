@@ -8,7 +8,6 @@ class CriticLossConfig(BaseConfig):
     Specify for the score matching critic's loss
     """
 
-    loss_weight: float
     huber_delta: float
 
 

@@ -4,8 +4,12 @@ from src.config.base import BaseConfig
 
 
 class LagrangianConstraintConfig(BaseConfig):
-    data_constraint_budget: float
-    prior_constraint_budget: float
+    """
+    The final data constraint is data_constraint_per_dim * sqrt(d)
+    """
+
+    data_constraint_budget_per_dim: float
+    prior_constraint_budget_per_dim: float
     dual_variable_lr: float
 
 

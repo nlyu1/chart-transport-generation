@@ -30,20 +30,25 @@ def get_canonical_chart_transport_configs(
         precision=prior_precision,
     )
 
-    constraint_method = LagrangianConstraintConfig(
-        data_constraint_budget=1e-2,
-        prior_constraint_budget=1e-2,
-        dual_variable_lr=5e-3,
-    )
-    constraint_config = ManifoldConstraintConfig(
-        huber_delta=2.0,
-        constraint_method=constraint_method,
-    )
+    """Defines the Huber loss that governs pretrain"""
     chart_pretrain_config = ChartPretrainConfig(
         zero_mean_weight=0.0,
         latent_norm_weight=1e-4,
         latent_norm_delta=1.5 * prior_precision,
     )
+
+    """Defines how the manifold constraints are enforced during integration training"""
+    constraint_method = LagrangianConstraintConfig(
+        data_constraint_budget_per_dim=1e-4,
+        prior_constraint_budget_per_dim=1e-4,
+        dual_variable_lr=5e-3,
+    )
+    constraint_config = ManifoldConstraintConfig(
+        huber_delta=5.0,
+        constraint_method=constraint_method,
+    )
+
+    """Defining the transport field & approximations"""
     transport_config = TransportLossConfig(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
         transport_step_size=0.1,
@@ -55,8 +60,7 @@ def get_canonical_chart_transport_configs(
         encoder_transport_weight=1.0,
     )
     critic_config = CriticLossConfig(
-        loss_weight=1.0,
-        huber_delta=2.0,
+        huber_delta=5.0,
     )
     loss_config = ChartTransportLossConfig(
         constraint_config=constraint_config,
@@ -67,7 +71,7 @@ def get_canonical_chart_transport_configs(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=2000,
         pretrain_critic_n_steps=2000,
-        update_chart_every_n_critic_steps=5,
+        update_chart_every_n_critic_steps=3,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(
