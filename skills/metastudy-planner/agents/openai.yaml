@@ -1,0 +1,4 @@
+interface:
+  display_name: "Metastudy Planner"
+  short_description: "Launch autoresearch metastudy planning"
+  default_prompt: "Use $metastudy-planner to launch planning for metastudies/example-study."

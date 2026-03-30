@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pty
 import re
 import subprocess
 import sys
@@ -71,6 +72,31 @@ def _run_noninteractive_with_resume_logging(
     return process.wait()
 
 
+def _run_interactive_with_resume_logging(
+    cmd: list[str], log_path: Path, role: str, target_path: Path
+) -> int:
+    session_id: str | None = None
+    text_buffer = ""
+
+    def master_read(fd: int) -> bytes:
+        nonlocal session_id, text_buffer
+        data = os.read(fd, 1024)
+        if not data or session_id is not None:
+            return data
+
+        text_buffer = (text_buffer + data.decode(errors="ignore"))[-4096:]
+        match = SESSION_ID_PATTERN.search(text_buffer)
+        if match is None:
+            return data
+
+        session_id = match.group(1)
+        log_event(log_path, "INFO ", role, target_path, f"codex resume {session_id}")
+        return data
+
+    status = pty.spawn(cmd, master_read=master_read)
+    return os.waitstatus_to_exitcode(status)
+
+
 def launch(
     role: str,
     target_path: Path,
@@ -121,8 +147,7 @@ def launch(
     t0 = time.monotonic()
 
     if interactive:
-        result = subprocess.run(cmd)
-        rc = result.returncode
+        rc = _run_interactive_with_resume_logging(cmd, log_path, role, target_path)
     else:
         rc = _run_noninteractive_with_resume_logging(cmd, log_path, role, target_path)
 
