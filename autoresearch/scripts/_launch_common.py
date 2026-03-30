@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -13,6 +14,7 @@ REPO = Path(__file__).parent.parent.parent          # scripts/ -> autoresearch/ 
 AUTORESEARCH = Path(__file__).parent.parent        # scripts/ -> autoresearch/
 # Override via AUTORESEARCH_MODEL env var if needed
 MODEL = os.environ.get("AUTORESEARCH_MODEL", "gpt-5.4")
+SESSION_ID_PATTERN = re.compile(r"session id:\s*([0-9a-f-]+)", re.IGNORECASE)
 
 
 def _now() -> str:
@@ -31,6 +33,42 @@ def log_event(
     with log_path.open("a") as f:
         f.write(line)
     print(line, end="", flush=True)
+
+
+def _run_noninteractive_with_resume_logging(
+    cmd: list[str], log_path: Path, role: str, target_path: Path
+) -> int:
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None:
+        return process.wait()
+
+    session_id: str | None = None
+    try:
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            if session_id is not None:
+                continue
+            match = SESSION_ID_PATTERN.search(line)
+            if match is None:
+                continue
+            session_id = match.group(1)
+            log_event(
+                log_path,
+                "INFO ",
+                role,
+                target_path,
+                f"codex resume --include-non-interactive {session_id}",
+            )
+    finally:
+        process.stdout.close()
+
+    return process.wait()
 
 
 def launch(
@@ -63,6 +101,9 @@ def launch(
     context_block = (
         f"\n---\nTarget path: {target_path.resolve()}\nLog path: {log_path.resolve()}\n"
     )
+    assigned_gpu = os.environ.get("AUTORESEARCH_ASSIGNED_GPU")
+    if assigned_gpu:
+        context_block += f"Assigned GPU: {assigned_gpu}\n"
     if extra_context:
         context_block += f"{extra_context}\n"
 
@@ -79,10 +120,13 @@ def launch(
     log_event(log_path, "START", role, target_path)
     t0 = time.monotonic()
 
-    result = subprocess.run(cmd)
+    if interactive:
+        result = subprocess.run(cmd)
+        rc = result.returncode
+    else:
+        rc = _run_noninteractive_with_resume_logging(cmd, log_path, role, target_path)
 
     elapsed = int(time.monotonic() - t0)
-    rc = result.returncode
     action = "DONE " if rc == 0 else "FAIL "
     log_event(log_path, action, role, target_path, f"exit:{rc}\t{elapsed}s")
     return rc

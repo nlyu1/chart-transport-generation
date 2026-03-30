@@ -33,6 +33,14 @@ See `metastudies/multimodal-gaussian-baseline/objective.md` as an example.
 
 The planner runs as an **interactive Codex session** — you can converse with it, steer the decomposition, and approve the result before execution begins.
 
+The session should begin by:
+- restating its interpretation of your objective
+- surfacing any planning-relevant ambiguities
+- asking clarifying questions when they materially affect the decomposition
+- proposing a sharper `objective.md` if the current one is too vague
+
+If you approve a sharpened rewrite, the planner may update `objective.md` before writing the plan. It should end with a short handoff telling you what it wrote, what assumptions it used, what to review, and the next command to run.
+
 ```bash
 uv run python autoresearch/scripts/launch-metastudy-planner.py metastudies/<name>
 ```
@@ -54,8 +62,8 @@ uv run python autoresearch/scripts/launch-metastudy-executor.py metastudies/<nam
 The executor runs non-interactively from this point. It will:
 
 1. Run each study in order via `study-executor` (which auto-invokes `study-planner` if needed)
-   - Each study invokes `study-planner` (if needed), then runs all substudies via `substudy-executor`
-   - `substudy-executor` selects a GPU, writes `config.py`, runs training, and writes `report.md`
+   - Each study invokes `study-planner` (if needed), then queues independent substudies across the GPUs present on the machine
+   - Each `substudy-executor` owns exactly one GPU, writes `config.py`, runs training, and writes `report.md`
    - `study-reviewer` runs after each study completes
 3. Invoke `metastudy-reviewer` after all studies complete
 4. Optionally spawn follow-up studies if the reviewer identifies unresolved hypotheses
@@ -88,6 +96,8 @@ TIMESTAMP             ACTION  ROLE                PATH                          
 2026-03-29T17:05:02Z  START   study-planner       .../studies/2d-baseline
 2026-03-29T17:06:10Z  DONE    study-planner       .../studies/2d-baseline           exit:0  68s
 2026-03-29T17:06:11Z  START   substudy-executor   .../substudies/step-size-0p1
+2026-03-29T17:06:12Z  START   substudy-executor   .../substudies/step-size-0p05
+2026-03-29T18:10:00Z  DONE    substudy-executor   .../substudies/step-size-0p05     exit:0  3830s
 2026-03-29T18:36:11Z  DONE    substudy-executor   .../substudies/step-size-0p1      exit:0  5400s
 ```
 

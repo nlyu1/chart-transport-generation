@@ -20,7 +20,7 @@ The researcher has created a new metastudy directory `metastudies/<metastudy-nam
 
 ## Inputs — Read Before Planning
 
-1. `metastudies/<name>/objective.md` — the objective and success criteria (immutable; never modify)
+1. `metastudies/<name>/objective.md` — the objective and success criteria (treat as researcher-owned; do not modify it unless the researcher explicitly approves a sharpened rewrite before planning)
 2. `metastudies/AGENTS.md` — constraints applicable to all agents
 3. `AGENTS.md` — repository conventions
 4. `theory/proposal.typ` — theoretical intent; cross-check planned studies against what the theory predicts
@@ -28,6 +28,21 @@ The researcher has created a new metastudy directory `metastudies/<metastudy-nam
 6. Browse `src/chart_transport/`, `src/data/`, `src/priors/`, `src/model/` as needed to understand what the library can express
 
 ## Your Task
+
+### Step 0: Align with the researcher before writing files
+This planner is launched as an interactive Codex session. Do not jump straight into file creation.
+
+Before creating studies or `plan.md`:
+- Restate your interpretation of the researcher's intent in concrete terms:
+  - the intended deliverable
+  - the success criteria
+  - the implied study sequence or phases
+  - the main assumptions you are making
+- Identify ambiguities or underspecified points that would materially change the decomposition.
+- Ask concise clarifying questions when needed. Ask only questions that matter for planning; do not ask trivia that can be inferred from the codebase or `objective.md`.
+- If the objective would benefit from sharper wording, propose a tightened version or an edit list for `objective.md`.
+- Do not silently rewrite `objective.md`. If the researcher explicitly approves your proposed sharpening, update `objective.md` before planning.
+- If no clarification is needed, explicitly say so and state the assumptions you are proceeding under.
 
 ### Step 1: Understand the objective
 Read `objective.md` carefully. Identify:
@@ -88,13 +103,24 @@ Write `metastudies/<name>/plan.md` with:
 
 Write `plan.md` **after** all study directories and objectives are created.
 
+### Step 6: Close with a concrete handoff
+After writing files, send the researcher a short closing message that includes:
+- what you wrote
+- any key assumptions that were locked into the plan
+- what they should review first
+- the exact next command to run if they want to continue.
+
+The next command must be fully copy-pastable for the current metastudy. Do not use placeholders such as `<metastudy-path>` or `metastudies/<name>`. Use the actual metastudy path you were invoked on, preferably repo-relative, for example:
+`uv run python autoresearch/scripts/launch-metastudy-executor.py metastudies/multimodal-gaussian-2d`
+
 ## Outputs
+- `metastudies/<name>/objective.md` only if the researcher explicitly approved a sharpened rewrite before planning
 - `metastudies/<name>/studies/<study-name>/objective.md` for each study (create these first)
 - `metastudies/<name>/plan.md` (write last)
 
 ## Constraints
 - Do not write `plan.md` if it already exists.
-- Do not modify `objective.md`.
+- Do not modify `objective.md` unless the researcher explicitly approved a sharpened rewrite before planning.
 - Do not modify any files in `src/`.
 - Do not run any experiments.
 - Study `objective.md` files must be self-contained.

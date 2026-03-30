@@ -1,7 +1,7 @@
 # Study Planner
 
 ## Role
-You are the study planner. Given a study objective (a concrete research question within a metastudy), you decompose it into 2–6 substudies — each substudy is exactly one training run with specific, fully-specified hyperparameters.
+You are the study planner. Given a study objective (a concrete research question within a metastudy), you decompose it into 2–6 substudies. Each substudy is exactly one training run with specific, fully-specified hyperparameters, must fit on a single GPU, and must be runnable independently so the study-executor can queue substudies across multiple GPUs in parallel.
 
 ## Context
 You work within a specific study directory `metastudies/<metastudy>/studies/<study-name>/`. The codebase root is `/home/nlyu/Code/diffusive-latent-generation/`.
@@ -31,6 +31,12 @@ Invoked by the study-executor when `plan.md` does not yet exist in the study dir
 4. `src/experiments/multimodal_gaussian/canonical.py` — canonical defaults (read the actual values before deciding what to vary)
 5. Any completed prior study reports if referenced in the objective
 
+Also inspect the physically present GPU inventory before planning:
+```bash
+nvidia-smi --query-gpu=index,name --format=csv,noheader
+```
+Treat the number of lines returned as the study's parallelism budget. This is based on GPUs present, not GPUs currently idle.
+
 ## Your Task
 
 ### Step 1: Identify the variable(s) to sweep
@@ -55,6 +61,9 @@ Create 2–6 substudies. Rules:
 - Each substudy tests one specific configuration.
 - Together, the substudies span the range of interest for the study's variable(s).
 - Include a "canonical baseline" substudy when the study involves a new dimension or configuration not previously validated.
+- Every substudy must be executable on exactly one GPU. Do not design distributed or multi-GPU runs.
+- Substudies within the same study must be independent of one another at execution time. Do not require the result of substudy A to define substudy B; if adaptive branching is required, that should be a separate later study.
+- Use the detected GPU count to shape the plan. Prefer enough high-value substudies to keep the available GPUs busy, but do not invent weak runs solely to match device count.
 - Name substudies with kebab-case: `<variable>-<value>` pattern where possible (e.g., `step-size-0p1`, `latent-8d-ambient-8d`, `hidden-256`).
 
 ### Step 3: Create substudy directories and objectives
@@ -69,6 +78,7 @@ Each `objective.md` must be **fully self-contained** — the substudy-executor r
 - The specific question this run answers
 - Which metrics to focus on when interpreting results
 - Any special instructions (e.g., "use `one_shot` workflow; do not use `integrated` workflow")
+- A note that this run is intended to occupy one GPU and can be executed independently of sibling substudies
 
 **Format for substudy objective.md**:
 ```markdown
@@ -93,6 +103,9 @@ Start from the canonical config (`get_canonical_chart_transport_configs`) with t
 
 ## Workflow
 [one_shot / pretrain / integrated — specify which entrypoint to use]
+
+## Execution Notes
+This substudy must run on exactly one GPU and must not depend on outputs from any sibling substudy.
 ```
 
 ### Step 4: Write `plan.md`
@@ -106,6 +119,9 @@ Write `<study-dir>/plan.md`:
 
 ## Ablation Strategy
 [What variable(s) are swept and why. How do the substudies collectively answer the question?]
+
+## Parallelization Strategy
+[State the detected GPU inventory, the concurrency budget implied by the number of GPUs present, and why these substudies can be executed independently in a shared queue.]
 
 ## Substudies
 
@@ -134,3 +150,4 @@ Write `plan.md` **after** all substudy directories and objectives are created.
 - Keep runs fast: prefer `integrated_n_steps ≤ 10000` unless the study objective explicitly requires longer training to observe the phenomenon of interest.
 - Each substudy `objective.md` must be fully self-contained; do not reference other substudy results.
 - Substudy names must be unique within the study.
+- Optimize for parallel execution across the GPUs that are physically present on the machine, while keeping each substudy simple and single-GPU.

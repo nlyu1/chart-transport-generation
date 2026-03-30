@@ -16,13 +16,13 @@ metastudy/          ← research campaign (weeks-to-months scope)
 
 | Agent | Role | Invoked by |
 |---|---|---|
-| `metastudy-planner` | Decomposes a metastudy objective into an ordered sequence of studies | `metastudy-executor` (or user) |
+| `metastudy-planner` | Interactively sharpens a metastudy objective if needed, then decomposes it into an ordered sequence of studies | `metastudy-executor` (or user) |
 | `metastudy-executor` | Orchestrates studies end-to-end; synthesizes the final report; may spawn follow-up studies | User |
 | `metastudy-reviewer` | Critically assesses the completed metastudy against its objective | `metastudy-executor` |
-| `study-planner` | Decomposes a study objective into concrete substudies (each = one training run) | `study-executor` |
-| `study-executor` | Runs substudies in order; tracks state; writes study report; invokes reviewer | `metastudy-executor` |
+| `study-planner` | Decomposes a study objective into concrete, independent single-GPU substudies | `study-executor` |
+| `study-executor` | Queues substudies across the GPUs present on the machine; tracks state; writes study report; invokes reviewer | `metastudy-executor` |
 | `study-reviewer` | Critically assesses the completed study against its research question | `study-executor` |
-| `substudy-executor` | Runs one experiment: selects GPU, writes config, runs training, writes report | `study-executor` |
+| `substudy-executor` | Runs one experiment on one assigned GPU: writes config, runs training, writes report | `study-executor` |
 
 ## Invocation
 
@@ -33,7 +33,7 @@ metastudy-executor(<metastudy-dir>)
   └── metastudy-planner          [if plan.md missing]
   └── study-executor × N         [one per study in plan]
         └── study-planner        [if plan.md missing]
-        └── substudy-executor × M    [one per substudy in plan]
+        └── substudy-executor × M    [queued in parallel, up to one active substudy per present GPU]
   └── metastudy-reviewer
   └── [follow-up study-executors, if review warrants]
 ```
@@ -75,4 +75,4 @@ Executors check `state.md` at startup to identify already-completed sub-units an
 
 Inherited from `metastudies/AGENTS.md`:
 - **Do not modify shared library code** in `src/`. All experiment customization lives in substudy `config.py` files or temporary scripts in `/tmp/`.
-- **Stripe experiments across available GPUs.** The `substudy-executor` selects the least-utilized GPU at runtime via `nvidia-smi`.
+- **Stripe experiments across the GPUs present on the machine.** The `study-executor` manages the per-study queue and assigns at most one active substudy to each GPU; each `substudy-executor` remains a simple single-GPU run.
