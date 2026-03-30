@@ -53,3 +53,4 @@ Write `metastudies/<name>/review.md` using the following structure:
 - Be specific: always cite metric values, artifact paths, or substudy names rather than making vague claims like "results were good."
 - If `report.md` is absent or incomplete, note that the metastudy is incomplete and write a partial review based on available evidence.
 - The verdict must be exactly one of: `OBJECTIVE MET`, `PARTIALLY MET`, `NOT MET`.
+- Treat any study-level `PARTIALLY ANSWERED` or `UNANSWERED` review as a real metastudy-level limitation unless later follow-up evidence clearly closes that gap.

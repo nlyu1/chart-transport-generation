@@ -1,0 +1,124 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - paragraph [ref=e5]: Autoresearch Monitor
+      - heading "Metastudy and Agent Dashboard" [level=1] [ref=e6]
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: Metastudy
+        - combobox "Metastudy" [ref=e10]:
+          - option "multimodal-gaussian-2d-retry" [selected]
+          - option "multimodal-gaussian-2d"
+          - option "template-metastudy"
+          - option "multimodal-gaussian-baseline"
+      - button "Refresh" [ref=e11] [cursor=pointer]
+  - generic [ref=e12]:
+    - article [ref=e13]:
+      - text: Studies
+      - strong [ref=e14]: "11"
+    - article [ref=e15]:
+      - text: Succeeded runs
+      - strong [ref=e16]: "8"
+    - article [ref=e17]:
+      - text: Failed runs
+      - strong [ref=e18]: "0"
+    - article [ref=e19]:
+      - text: Latest activity
+      - strong [ref=e20]: 2026-03-30 01:24 UTC
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: Directory Tree
+          - heading "Metastudy Filesystem" [level=2] [ref=e26]
+        - button "Open run.log" [ref=e27] [cursor=pointer]
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - button "toggle" [ref=e32] [cursor=pointer]: −
+          - button "dir multimodal-gaussian-2d-retry diffusive-latent-generation/metastudies/multimodal-gaussian-2d-retry" [ref=e33] [cursor=pointer]:
+            - generic [ref=e34]:
+              - generic [ref=e35]: dir
+              - generic [ref=e36]: multimodal-gaussian-2d-retry
+              - generic [ref=e37]: diffusive-latent-generation/metastudies/multimodal-gaussian-2d-retry
+        - generic [ref=e38]:
+          - generic [ref=e40]:
+            - button "toggle" [ref=e41] [cursor=pointer]: +
+            - button "dir studies metastudies/multimodal-gaussian-2d-retry/studies" [ref=e42] [cursor=pointer]:
+              - generic [ref=e43]:
+                - generic [ref=e44]: dir
+                - generic [ref=e45]: studies
+                - generic [ref=e46]: metastudies/multimodal-gaussian-2d-retry/studies
+          - generic [ref=e48]:
+            - button "toggle" [disabled] [ref=e49] [cursor=pointer]
+            - button "file objective.md metastudies/multimodal-gaussian-2d-retry/objective.md" [ref=e50] [cursor=pointer]:
+              - generic [ref=e51]:
+                - generic [ref=e52]: file
+                - generic [ref=e53]: objective.md
+                - generic [ref=e54]: metastudies/multimodal-gaussian-2d-retry/objective.md
+          - generic [ref=e56]:
+            - button "toggle" [disabled] [ref=e57] [cursor=pointer]
+            - button "file plan.md metastudies/multimodal-gaussian-2d-retry/plan.md" [ref=e58] [cursor=pointer]:
+              - generic [ref=e59]:
+                - generic [ref=e60]: file
+                - generic [ref=e61]: plan.md
+                - generic [ref=e62]: metastudies/multimodal-gaussian-2d-retry/plan.md
+          - generic [ref=e64]:
+            - button "toggle" [disabled] [ref=e65] [cursor=pointer]
+            - button "file run.log metastudies/multimodal-gaussian-2d-retry/run.log" [ref=e66] [cursor=pointer]:
+              - generic [ref=e67]:
+                - generic [ref=e68]: file
+                - generic [ref=e69]: run.log
+                - generic [ref=e70]: metastudies/multimodal-gaussian-2d-retry/run.log
+    - generic [ref=e71]:
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - paragraph [ref=e74]: Execution Tree
+          - heading "Agent Spawn Tree" [level=2] [ref=e75]
+        - generic [ref=e76]:
+          - checkbox "Auto-tail inspector" [checked] [ref=e77]
+          - generic [ref=e78]: Auto-tail inspector
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - button "toggle" [ref=e83] [cursor=pointer]: −
+          - button "metastudy multimodal-gaussian-2d-retry" [ref=e84] [cursor=pointer]:
+            - generic [ref=e85]:
+              - generic [ref=e86]: metastudy
+              - generic [ref=e87]: multimodal-gaussian-2d-retry
+        - generic [ref=e88]:
+          - generic [ref=e90]:
+            - button "toggle" [ref=e91] [cursor=pointer]: +
+            - button "study flow-matching-baselines" [ref=e92] [cursor=pointer]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: study
+                - generic [ref=e95]: flow-matching-baselines
+          - generic [ref=e97]:
+            - button "toggle" [disabled] [ref=e98] [cursor=pointer]
+            - button "metastudy-planner succeeded multimodal-gaussian-2d-retry 2026-03-30 00:06 UTC" [ref=e99] [cursor=pointer]:
+              - generic [ref=e100]:
+                - generic [ref=e101]: metastudy-planner
+                - generic [ref=e102]: succeeded
+                - generic [ref=e103]: multimodal-gaussian-2d-retry
+                - generic [ref=e104]: 2026-03-30 00:06 UTC
+          - generic [ref=e106]:
+            - button "toggle" [disabled] [ref=e107] [cursor=pointer]
+            - button "metastudy-executor running multimodal-gaussian-2d-retry 2026-03-30 00:13 UTC" [ref=e108] [cursor=pointer]:
+              - generic [ref=e109]:
+                - generic [ref=e110]: metastudy-executor
+                - generic [ref=e111]: running
+                - generic [ref=e112]: multimodal-gaussian-2d-retry
+                - generic [ref=e113]: 2026-03-30 00:13 UTC
+          - generic [ref=e115]:
+            - button "toggle" [disabled] [ref=e116] [cursor=pointer]
+            - button "metastudy-executor running multimodal-gaussian-2d-retry 2026-03-30 01:00 UTC" [ref=e117] [cursor=pointer]:
+              - generic [ref=e118]:
+                - generic [ref=e119]: metastudy-executor
+                - generic [ref=e120]: running
+                - generic [ref=e121]: multimodal-gaussian-2d-retry
+                - generic [ref=e122]: 2026-03-30 01:00 UTC
+  - generic [ref=e123]:
+    - generic [ref=e125]:
+      - paragraph [ref=e126]: Inspector
+      - heading "Latest run.log tail" [level=2] [ref=e127]
+    - article [ref=e130]:
+      - generic [ref=e131]: Path
+      - strong [ref=e132]: /home/nlyu/Code/diffusive-latent-generation/metastudies/multimodal-gaussian-2d-retry/run.log

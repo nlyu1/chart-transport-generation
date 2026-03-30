@@ -76,3 +76,45 @@ Executors check `state.md` at startup to identify already-completed sub-units an
 Inherited from `metastudies/AGENTS.md`:
 - **Do not modify shared library code** in `src/`. All experiment customization lives in substudy `config.py` files or temporary scripts in `/tmp/`.
 - **Stripe experiments across the GPUs present on the machine.** The `study-executor` manages the per-study queue and assigns at most one active substudy to each GPU; each `substudy-executor` remains a simple single-GPU run.
+
+## Dashboard
+
+The dashboard lives in `autoresearch/dashboard/` and gives a live-ish operator view over metastudies, agent runs, logs, and past Codex conversations.
+
+Run it with `uv`:
+
+```bash
+uv run python autoresearch/dashboard/server.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+### What it shows
+
+- **Metastudy selector**: choose any directory under `metastudies/`
+- **Left pane: filesystem tree**: browse the selected metastudy directory and open files like `objective.md`, `plan.md`, `state.md`, `report.md`, `review.md`, `config.py`, and `training.log`
+- **Right pane: agent spawn tree**: reconstructed from `run.log`, grouped by metastudy, study, and substudy directories
+- **Inspector**:
+  - tails `run.log` and `training.log`
+  - opens study/substudy markdown files
+  - loads past Codex conversations by matching `run.log` session IDs to local `~/.codex/sessions/**/*.jsonl`
+
+### How the conversation view works
+
+`autoresearch/scripts/_launch_common.py` writes `INFO` lines such as:
+
+```text
+codex resume --include-non-interactive <session-id>
+```
+
+The dashboard parses those session IDs out of `run.log`, finds the corresponding local JSONL transcript under `~/.codex/sessions/`, and renders the parsed conversation in the inspector. The raw JSONL is also available from the same view.
+
+### Notes
+
+- The UI auto-selects the most recently active metastudy.
+- The inspector can auto-tail the currently opened log file.
+- Parsed transcripts hide the giant bootstrap prompt blocks by default; use the transcript toggle to reveal them.

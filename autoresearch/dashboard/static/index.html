@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Autoresearch Dashboard</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <p class="eyebrow">Autoresearch Monitor</p>
+          <h1>Metastudy and Agent Dashboard</h1>
+        </div>
+        <div class="controls">
+          <label class="field">
+            <span>Metastudy</span>
+            <select id="metastudy-select"></select>
+          </label>
+          <button id="refresh-button" class="button button-strong" type="button">
+            Refresh
+          </button>
+        </div>
+      </header>
+
+      <section class="summary-strip" id="summary-strip"></section>
+
+      <main class="workspace">
+        <section class="sidebar-column">
+          <section class="panel tree-panel">
+            <div class="panel-head compact-head">
+              <div>
+                <p class="panel-label">Directory Tree</p>
+                <h2>Metastudy Filesystem</h2>
+              </div>
+              <button class="button button-muted" id="open-run-log" type="button">
+                Open run.log
+              </button>
+            </div>
+            <div class="panel-body compact-body">
+              <div id="file-tree" class="tree-root"></div>
+            </div>
+          </section>
+
+          <section class="panel agent-panel">
+            <div class="panel-head compact-head">
+              <div>
+                <p class="panel-label">Execution Tree</p>
+                <h2>Agent Spawn Tree</h2>
+              </div>
+              <label class="toggle inline-toggle">
+                <input type="checkbox" id="auto-tail-toggle" checked />
+                <span>Auto-tail inspector</span>
+              </label>
+            </div>
+            <div class="panel-body compact-body">
+              <div id="agent-tree" class="tree-root"></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel inspector-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Inspector</p>
+              <h2 id="inspector-title">Select a file or agent</h2>
+            </div>
+            <div class="inspector-actions" id="inspector-actions"></div>
+          </div>
+          <div class="panel-body inspector-body">
+            <div class="meta-grid" id="inspector-meta"></div>
+            <div class="transcript-controls" id="transcript-controls"></div>
+            <pre id="inspector-content" class="code-view"></pre>
+            <div id="conversation-view" class="conversation-view hidden"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="tree-node-template">
+      <div class="tree-node">
+        <div class="tree-row">
+          <button class="tree-toggle" type="button" aria-label="toggle"></button>
+          <button class="tree-select" type="button"></button>
+        </div>
+        <div class="tree-children"></div>
+      </div>
+    </template>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+  </html>
