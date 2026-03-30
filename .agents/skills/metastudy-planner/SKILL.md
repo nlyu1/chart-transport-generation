@@ -16,7 +16,7 @@ Use this skill to make the current Codex session act as the metastudy planner. R
 3. Validate the target from the repo root with the helper script:
 
 ```bash
-uv run python skills/metastudy-planner/scripts/launch.py <metastudy-name-or-path>
+uv run python .agents/skills/metastudy-planner/scripts/launch.py <metastudy-name-or-path>
 ```
 
 4. After validation, read:

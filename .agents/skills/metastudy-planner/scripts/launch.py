@@ -9,7 +9,15 @@ import shlex
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
+
+def find_repo_root(*, start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "AGENTS.md").is_file() and (candidate / "metastudies").is_dir():
+            return candidate
+    raise RuntimeError(f"Could not locate repository root from {start}")
+
+
+REPO = find_repo_root(start=Path(__file__).resolve())
 METASTUDIES = REPO / "metastudies"
 
 
