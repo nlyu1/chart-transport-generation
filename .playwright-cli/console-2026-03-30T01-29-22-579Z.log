@@ -237,3 +237,224 @@
 [  630499ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
 [  633000ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
 [  635501ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  638003ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  640504ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  643006ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  645507ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  648008ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  650510ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  653011ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  655512ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  658014ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  660516ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  663017ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  663799ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  663811ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  664679ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  664679ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  665670ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/metastudies:0
+[  665670ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at loadMetastudies (http://127.0.0.1:8765/static/app.js:68:25)
+    at refreshCurrentMetastudy (http://127.0.0.1:8765/static/app.js:89:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:27:8)
+[  666246ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/metastudies:0
+[  666247ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at loadMetastudies (http://127.0.0.1:8765/static/app.js:68:25)
+    at refreshCurrentMetastudy (http://127.0.0.1:8765/static/app.js:89:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:27:8)
+[  666422ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/metastudies:0
+[  666423ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at loadMetastudies (http://127.0.0.1:8765/static/app.js:68:25)
+    at refreshCurrentMetastudy (http://127.0.0.1:8765/static/app.js:89:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:27:8)
+[  666574ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/metastudies:0
+[  666575ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at loadMetastudies (http://127.0.0.1:8765/static/app.js:68:25)
+    at refreshCurrentMetastudy (http://127.0.0.1:8765/static/app.js:89:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:27:8)
+[  667823ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  667823ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  668591ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  668591ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  671063ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  671063ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:238:22)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  673631ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  673631ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  675775ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  675775ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  677247ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  677247ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  679924ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  679925ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  681191ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  681191ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  681847ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  681847ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  706239ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  706239ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  737559ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  737560ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  739111ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  739112ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:238:22)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  740423ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  740424ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  741423ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  741424ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:295:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  755343ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  755344ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  757167ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  757168ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  757919ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  757920ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:295:9)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  760432ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  760432ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  761567ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  761568ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  762143ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/file?path=%2Fhome%2Fnlyu%2FCode%2Fdiffusive-latent-generation%2Fmetastudies%2Fmultimodal-gaussian-2d-retry%2Frun.log&lines=200:0
+[  762143ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectFile (http://127.0.0.1:8765/static/app.js:339:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:243:20)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  763352ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  763352ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  764711ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  764712ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:238:22)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  766260ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  766261ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  770520ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  770521ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  771543ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  771543ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:238:22)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)
+[  799961ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c16-bd0a-7742-992d-d99e5dc9debe:0
+[  799961ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  800615ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  800616ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  801228ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  801228ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at inspectRun (http://127.0.0.1:8765/static/app.js:282:11)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:183:15)
+[  802367ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8765/api/session?id=019d3c41-68d7-7e41-be45-716cc469a5f2:0
+[  802368ms] TypeError: Failed to fetch
+    at fetchJson (http://127.0.0.1:8765/static/app.js:59:26)
+    at inspectSession (http://127.0.0.1:8765/static/app.js:361:25)
+    at Object.onClick (http://127.0.0.1:8765/static/app.js:238:22)
+    at HTMLButtonElement.<anonymous> (http://127.0.0.1:8765/static/app.js:317:19)

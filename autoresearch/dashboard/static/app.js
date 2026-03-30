@@ -6,10 +6,13 @@ const state = {
   selectedTreePath: null,
   autoTail: true,
   inspector: null,
+  inspectorMetaBase: [],
   showHiddenTranscriptItems: false,
+  transcriptMode: "parsed",
 };
 
 let inspectorTimer = null;
+let workspaceTimer = null;
 
 const metastudySelect = document.getElementById("metastudy-select");
 const summaryStrip = document.getElementById("summary-strip");
@@ -24,7 +27,7 @@ const transcriptControls = document.getElementById("transcript-controls");
 const autoTailToggle = document.getElementById("auto-tail-toggle");
 
 document.getElementById("refresh-button").addEventListener("click", () => {
-  void refreshCurrentMetastudy();
+  void refreshCurrentMetastudy({ preserveInspector: true });
 });
 
 document.getElementById("open-run-log").addEventListener("click", () => {
@@ -35,9 +38,8 @@ document.getElementById("open-run-log").addEventListener("click", () => {
 
 autoTailToggle.addEventListener("change", (event) => {
   state.autoTail = event.target.checked;
-  if (state.inspector) {
-    scheduleInspectorRefresh();
-  }
+  scheduleInspectorRefresh();
+  scheduleWorkspaceRefresh();
 });
 
 metastudySelect.addEventListener("change", async (event) => {
@@ -85,16 +87,39 @@ async function loadMetastudies() {
   }
 }
 
-async function refreshCurrentMetastudy() {
-  await loadMetastudies();
+async function refreshCurrentMetastudy(options = {}) {
+  if (!state.selectedMetastudyPath) {
+    await loadMetastudies();
+    return;
+  }
+
+  const payload = await fetchJson("/api/metastudies");
+  state.metastudies = payload.metastudies;
+  renderMetastudyOptions();
+  await loadMetastudy(state.selectedMetastudyPath, options);
 }
 
-async function loadMetastudy(path) {
+function renderMetastudyOptions() {
+  metastudySelect.innerHTML = "";
+  state.metastudies.forEach((metastudy) => {
+    const option = document.createElement("option");
+    option.value = metastudy.path;
+    option.textContent = metastudy.name;
+    metastudySelect.append(option);
+  });
+  if (state.selectedMetastudyPath) {
+    metastudySelect.value = state.selectedMetastudyPath;
+  }
+}
+
+async function loadMetastudy(path, options = {}) {
   state.metastudyPayload = await fetchJson("/api/metastudy", { path });
+  state.selectedMetastudyPath = path;
   renderSummary(state.metastudyPayload.summary);
   renderFileTree();
   renderAgentTree();
-  if (!state.inspector) {
+  scheduleWorkspaceRefresh();
+  if (!state.inspector || !options.preserveInspector) {
     await inspectFile(state.metastudyPayload.paths.run_log, "Latest run.log tail", {
       lines: 200,
       autoTail: true,
@@ -248,12 +273,13 @@ function importantFileButtons(run) {
 async function inspectDirectory(node) {
   clearInspectorTimer();
   state.inspector = { type: "directory", path: node.path, autoTail: false };
+  state.inspectorMetaBase = [
+    ["Path", node.path],
+    ["Type", "directory"],
+  ];
   inspectorTitle.textContent = `${node.name || node.path}`;
   inspectorActions.replaceChildren();
-  inspectorMeta.replaceChildren(
-    metaCard("Path", node.path),
-    metaCard("Type", "directory"),
-  );
+  renderInspectorMeta(state.inspectorMetaBase);
   transcriptControls.classList.add("hidden");
   conversationView.classList.add("hidden");
   inspectorContent.classList.remove("hidden");
@@ -261,21 +287,21 @@ async function inspectDirectory(node) {
 }
 
 async function inspectRun(run) {
-  const metaCards = [
-    metaCard("Role", run.role),
-    metaCard("Status", run.status),
-    metaCard("Target", run.target_path),
-    metaCard("Started", run.start_display || run.start_timestamp || "unknown"),
+  state.inspectorMetaBase = [
+    ["Role", run.role],
+    ["Status", run.status],
+    ["Target", run.target_path],
+    ["Started", run.start_display || run.start_timestamp || "unknown"],
   ];
   if (run.duration_seconds !== null && run.duration_seconds !== undefined) {
-    metaCards.push(metaCard("Duration", `${run.duration_seconds}s`));
+    state.inspectorMetaBase.push(["Duration", `${run.duration_seconds}s`]);
   }
   if (run.session_id) {
-    metaCards.push(metaCard("Session", run.session_id));
+    state.inspectorMetaBase.push(["Session", run.session_id]);
   }
 
   inspectorTitle.textContent = `${run.role} · ${run.target_name}`;
-  inspectorMeta.replaceChildren(...metaCards);
+  renderInspectorMeta(state.inspectorMetaBase);
   renderInspectorActions(importantFileButtons(run));
 
   if (run.session_id) {
@@ -306,6 +332,10 @@ function metaCard(label, value) {
   return card;
 }
 
+function renderInspectorMeta(entries) {
+  inspectorMeta.replaceChildren(...entries.map(([label, value]) => metaCard(label, value)));
+}
+
 function renderInspectorActions(actions) {
   inspectorActions.replaceChildren();
   actions.forEach((action) => {
@@ -329,8 +359,10 @@ async function inspectFile(path, title, options = {}) {
     lines: options.lines || null,
     autoTail: Boolean(options.autoTail),
   };
+  state.transcriptMode = "parsed";
   if (!options.preserveMeta) {
-    inspectorMeta.replaceChildren(metaCard("Path", path));
+    state.inspectorMetaBase = [["Path", path]];
+    renderInspectorMeta(state.inspectorMetaBase);
   }
   inspectorTitle.textContent = title;
   transcriptControls.classList.add("hidden");
@@ -350,27 +382,29 @@ async function inspectSession(sessionId, title, options = {}) {
     type: "session",
     sessionId,
     title,
-    autoTail: false,
+    autoTail: true,
   };
   inspectorTitle.textContent = title;
   if (!options.preserveMeta) {
-    inspectorMeta.replaceChildren(metaCard("Session", sessionId));
+    state.inspectorMetaBase = [["Session", sessionId]];
+    renderInspectorMeta(state.inspectorMetaBase);
   }
   inspectorContent.classList.add("hidden");
   conversationView.classList.remove("hidden");
   const payload = await fetchJson("/api/session", { id: sessionId });
   renderSession(payload);
+  scheduleInspectorRefresh();
 }
 
 function renderSession(payload) {
-  inspectorMeta.replaceChildren(
-    ...Array.from(inspectorMeta.children),
-    metaCard("Transcript file", payload.metadata.path),
-    metaCard("Visible items", String(visibleTranscriptItems(payload.items).length)),
-    ...(payload.metadata.shell_snapshots || []).slice(0, 2).map((path, index) =>
-      metaCard(`Shell snapshot ${index + 1}`, path),
-    ),
-  );
+  renderInspectorMeta([
+    ...state.inspectorMetaBase,
+    ["Transcript file", payload.metadata.path],
+    ["Visible items", String(visibleTranscriptItems(payload.items).length)],
+    ...(payload.metadata.shell_snapshots || [])
+      .slice(0, 2)
+      .map((path, index) => [`Shell snapshot ${index + 1}`, path]),
+  ]);
   transcriptControls.classList.remove("hidden");
   transcriptControls.innerHTML = "";
   const checkbox = document.createElement("input");
@@ -390,6 +424,7 @@ function renderSession(payload) {
   rawButton.className = "button button-muted";
   rawButton.textContent = "Show raw JSONL";
   rawButton.addEventListener("click", () => {
+    state.transcriptMode = "raw";
     inspectorContent.classList.remove("hidden");
     inspectorContent.textContent = payload.raw_text;
     conversationView.classList.add("hidden");
@@ -401,18 +436,28 @@ function renderSession(payload) {
   transcriptButton.className = "button button-muted";
   transcriptButton.textContent = "Show parsed transcript";
   transcriptButton.addEventListener("click", () => {
+    state.transcriptMode = "parsed";
     inspectorContent.classList.add("hidden");
     conversationView.classList.remove("hidden");
     renderTranscriptItems(payload.items);
   });
   transcriptControls.append(transcriptButton);
 
+  if (state.transcriptMode === "raw") {
+    inspectorContent.classList.remove("hidden");
+    inspectorContent.textContent = payload.raw_text;
+    conversationView.classList.add("hidden");
+    return;
+  }
+
+  inspectorContent.classList.add("hidden");
+  conversationView.classList.remove("hidden");
   renderTranscriptItems(payload.items);
 }
 
 function renderTranscriptItems(items) {
   conversationView.replaceChildren();
-  visibleTranscriptItems(items).forEach((item) => {
+  groupTranscriptItems(visibleTranscriptItems(items)).forEach((item) => {
     conversationView.append(buildTranscriptItem(item));
   });
 }
@@ -421,11 +466,34 @@ function visibleTranscriptItems(items) {
   return items.filter((item) => state.showHiddenTranscriptItems || !item.hidden_by_default);
 }
 
+function groupTranscriptItems(items) {
+  const grouped = [];
+  let toolBatch = [];
+
+  for (const item of items) {
+    if (item.kind === "message") {
+      if (toolBatch.length > 0) {
+        grouped.push({ kind: "tool_batch", items: toolBatch });
+        toolBatch = [];
+      }
+      grouped.push(item);
+      continue;
+    }
+    toolBatch.push(item);
+  }
+
+  if (toolBatch.length > 0) {
+    grouped.push({ kind: "tool_batch", items: toolBatch });
+  }
+
+  return grouped;
+}
+
 function buildTranscriptItem(item) {
   if (item.kind === "message") {
     return buildMessageItem(item);
   }
-  return buildToolItem(item);
+  return buildToolBatch(item.items || [item]);
 }
 
 function buildMessageItem(item) {
@@ -450,9 +518,9 @@ function buildMessageItem(item) {
   return article;
 }
 
-function buildToolItem(item) {
+function buildToolBatch(items) {
   const details = document.createElement("details");
-  details.className = "tool-card";
+  details.className = "tool-card tool-batch";
 
   const summary = document.createElement("summary");
   const left = document.createElement("div");
@@ -460,50 +528,80 @@ function buildToolItem(item) {
 
   const title = document.createElement("span");
   title.className = "pill role-pill";
-  title.textContent = item.kind === "tool_output" ? "tool output" : item.tool_name || "tool";
+  title.textContent = items.length === 1 ? "tool activity" : `${items.length} tool actions`;
 
   const strong = document.createElement("span");
   strong.className = "tool-title";
-  strong.textContent =
-    item.kind === "tool_output"
-      ? "Execution details"
-      : item.tool_name || "Tool call";
+  strong.textContent = summarizeToolBatchTitle(items);
 
   const snippet = document.createElement("span");
   snippet.className = "tool-snippet";
-  snippet.textContent = summarizeToolItem(item);
+  snippet.textContent = summarizeToolBatch(items);
 
   left.append(title, strong, snippet);
-
-  const phase = document.createElement("span");
-  phase.className = "phase-tag";
-  phase.textContent = item.call_id || "";
-
-  summary.append(left, phase);
+  summary.append(left);
 
   const body = document.createElement("div");
   body.className = "tool-body";
-  const pre = document.createElement("pre");
-  pre.textContent = prettyToolText(item);
-  body.append(pre);
+  items.forEach((item, index) => {
+    body.append(buildToolBatchEntry(item, index));
+  });
 
   details.append(summary, body);
   return details;
 }
 
+function buildToolBatchEntry(item, index) {
+  const section = document.createElement("section");
+  section.className = "tool-entry";
+
+  const header = document.createElement("div");
+  header.className = "tool-entry-header";
+
+  const kind = document.createElement("span");
+  kind.className = "pill role-pill";
+  kind.textContent = item.kind === "tool_output" ? "output" : item.tool_name || "tool";
+
+  const title = document.createElement("strong");
+  title.className = "tool-entry-title";
+  title.textContent =
+    item.kind === "tool_output"
+      ? `Result ${index + 1}`
+      : summarizeToolEntryTitle(item);
+
+  const snippet = document.createElement("span");
+  snippet.className = "tool-entry-snippet";
+  snippet.textContent = summarizeToolItem(item);
+
+  header.append(kind, title, snippet);
+
+  const pre = document.createElement("pre");
+  pre.textContent = prettyToolText(item);
+
+  section.append(header, pre);
+  return section;
+}
+
 function scheduleInspectorRefresh() {
   clearInspectorTimer();
   if (!state.autoTail || !state.inspector) return;
-  if (state.inspector.type !== "file" || !state.inspector.autoTail) return;
+  if (!state.inspector.autoTail) return;
   inspectorTimer = window.setTimeout(async () => {
     try {
-      const payload = await fetchJson("/api/file", {
-        path: state.inspector.path,
-        lines: state.inspector.lines || null,
-      });
-      inspectorContent.textContent = payload.content;
+      if (state.inspector.type === "file") {
+        const payload = await fetchJson("/api/file", {
+          path: state.inspector.path,
+          lines: state.inspector.lines || null,
+        });
+        inspectorContent.textContent = payload.content;
+      } else if (state.inspector.type === "session") {
+        const payload = await fetchJson("/api/session", { id: state.inspector.sessionId });
+        renderSession(payload);
+      }
     } catch (error) {
-      inspectorContent.textContent = String(error);
+      inspectorContent.classList.remove("hidden");
+      inspectorContent.textContent = `Dashboard server unavailable: ${String(error)}`;
+      conversationView.classList.add("hidden");
     }
     scheduleInspectorRefresh();
   }, 2500);
@@ -513,6 +611,31 @@ function clearInspectorTimer() {
   if (inspectorTimer !== null) {
     window.clearTimeout(inspectorTimer);
     inspectorTimer = null;
+  }
+}
+
+function scheduleWorkspaceRefresh() {
+  clearWorkspaceTimer();
+  if (!state.autoTail || !state.selectedMetastudyPath) return;
+  workspaceTimer = window.setTimeout(async () => {
+    try {
+      state.metastudyPayload = await fetchJson("/api/metastudy", {
+        path: state.selectedMetastudyPath,
+      });
+      renderSummary(state.metastudyPayload.summary);
+      renderFileTree();
+      renderAgentTree();
+    } catch {
+      // Leave the current tree visible; the inspector shows the connectivity issue.
+    }
+    scheduleWorkspaceRefresh();
+  }, 4000);
+}
+
+function clearWorkspaceTimer() {
+  if (workspaceTimer !== null) {
+    window.clearTimeout(workspaceTimer);
+    workspaceTimer = null;
   }
 }
 
@@ -548,6 +671,43 @@ function summarizeToolItem(item) {
     .split("\n")
     .find((line) => line.trim() && !line.startsWith("Chunk ID:"));
   return truncate(outputLine || "", 140);
+}
+
+function summarizeToolBatchTitle(items) {
+  const labels = [];
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      labels.push(item.tool_name || "tool");
+    } else if (item.kind === "tool_output") {
+      labels.push("output");
+    }
+  }
+  return uniqueLabels(labels).slice(0, 4).join(" · ");
+}
+
+function summarizeToolBatch(items) {
+  const snippets = items
+    .slice(0, 3)
+    .map((item) => summarizeToolItem(item))
+    .filter(Boolean);
+  return truncate(snippets.join(" | "), 180);
+}
+
+function summarizeToolEntryTitle(item) {
+  if (item.tool_name === "exec_command") {
+    const payload = safeJsonParse(item.text);
+    if (payload?.cmd) {
+      return truncate(payload.cmd, 72);
+    }
+  }
+  if (item.tool_name) {
+    return item.tool_name;
+  }
+  return "Tool activity";
+}
+
+function uniqueLabels(values) {
+  return [...new Set(values)];
 }
 
 function prettyToolText(item) {
@@ -587,6 +747,7 @@ function escapeHtml(value) {
 }
 
 window.addEventListener("beforeunload", clearInspectorTimer);
+window.addEventListener("beforeunload", clearWorkspaceTimer);
 
 void loadMetastudies().catch((error) => {
   inspectorTitle.textContent = "Failed to load dashboard";

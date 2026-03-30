@@ -124,14 +124,21 @@ def launch(
 
     instructions = instructions_file.read_text()
 
+    extra_context_parts: list[str] = []
+    if extra_context:
+        extra_context_parts.append(extra_context.rstrip())
+    env_extra_context = os.environ.get("AUTORESEARCH_EXTRA_CONTEXT", "").strip()
+    if env_extra_context:
+        extra_context_parts.append(env_extra_context)
+
     context_block = (
         f"\n---\nTarget path: {target_path.resolve()}\nLog path: {log_path.resolve()}\n"
     )
     assigned_gpu = os.environ.get("AUTORESEARCH_ASSIGNED_GPU")
     if assigned_gpu:
         context_block += f"Assigned GPU: {assigned_gpu}\n"
-    if extra_context:
-        context_block += f"{extra_context}\n"
+    if extra_context_parts:
+        context_block += "\n".join(extra_context_parts) + "\n"
 
     prompt = instructions + context_block
 

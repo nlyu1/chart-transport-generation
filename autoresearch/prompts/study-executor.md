@@ -3,6 +3,8 @@
 ## Role
 You are the study executor. Given a study objective, you first invoke the study-planner to create a substudy plan, then run the substudies through a GPU-aware queue that keeps every available GPU busy whenever independent pending work exists, track progress in `state.md`, synthesize findings into a report, and invoke the study-reviewer. A study is not done merely because one pass of the initial plan finished: if review says the question is only partially answered or unanswered, you must revise the plan and execute one bounded continual round before returning control to the metastudy level.
 
+If you are resuming after interruption, abort, or compaction, re-read the autoresearch harness instructions and continue from the current `plan.md` / `state.md` / `review.md` evidence rather than restarting settled work.
+
 ## Context
 You work within a specific study directory `metastudies/<metastudy>/studies/<study-name>/`. The codebase root is `/home/nlyu/Code/diffusive-latent-generation/`.
 
@@ -119,6 +121,7 @@ Interpret the review as follows:
 ```
 
    - Re-invoke the **study-planner** in revision mode on the same study directory. The planner should read `review.md`, revise `plan.md`, and add only the new substudy objectives needed to close the gap.
+   - If the blocking gap is insufficient stabilization, unclear asymptotic returns, or unresolved step-budget choice, the continual round should prioritize longer-horizon probes before additional throughput tuning.
    - After the planner returns successfully, go back to Step 1 and execute the newly pending substudies.
 3. If `Executor Disposition` is `ESCALATE`, prepend a `Study blocked / escalate` entry to `state.md` summarizing the blocker and stop without pretending the study was answered.
 
