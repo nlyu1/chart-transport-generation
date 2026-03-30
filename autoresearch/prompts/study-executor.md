@@ -122,6 +122,12 @@ Interpret the review as follows:
 
    - Re-invoke the **study-planner** in revision mode on the same study directory. The planner should read `review.md`, revise `plan.md`, and add only the new substudy objectives needed to close the gap.
    - If the blocking gap is insufficient stabilization, unclear asymptotic returns, or unresolved step-budget choice, the continual round should prioritize longer-horizon probes before additional throughput tuning.
+   - If the reviewer explicitly requests an analysis-only or artifact-curation continual that can be completed using existing evidence already on disk, you may satisfy that continual directly at the study level instead of invoking `study-planner` or new `substudy-executor` runs. In that case:
+     - update the requested study-level artifacts (for example `figures/`, tables, or comparisons built from existing substudy outputs)
+     - correct any report text that contradicts the cited metrics or figures
+     - refresh `report.md`
+     - re-invoke `study-reviewer`
+     - stop after that single bounded continual round, whether or not the reviewer is fully satisfied
    - After the planner returns successfully, go back to Step 1 and execute the newly pending substudies.
 3. If `Executor Disposition` is `ESCALATE`, prepend a `Study blocked / escalate` entry to `state.md` summarizing the blocker and stop without pretending the study was answered.
 

@@ -96,7 +96,10 @@ async function refreshCurrentMetastudy(options = {}) {
   const payload = await fetchJson("/api/metastudies");
   state.metastudies = payload.metastudies;
   renderMetastudyOptions();
-  await loadMetastudy(state.selectedMetastudyPath, options);
+  await loadMetastudy(state.selectedMetastudyPath, {
+    includeFileTree: true,
+    ...options,
+  });
 }
 
 function renderMetastudyOptions() {
@@ -113,10 +116,16 @@ function renderMetastudyOptions() {
 }
 
 async function loadMetastudy(path, options = {}) {
-  state.metastudyPayload = await fetchJson("/api/metastudy", { path });
+  const includeFileTree = options.includeFileTree !== false;
+  state.metastudyPayload = await fetchJson("/api/metastudy", {
+    path,
+    include_file_tree: includeFileTree,
+  });
   state.selectedMetastudyPath = path;
   renderSummary(state.metastudyPayload.summary);
-  renderFileTree();
+  if (state.metastudyPayload.file_tree) {
+    renderFileTree();
+  }
   renderAgentTree();
   scheduleWorkspaceRefresh();
   if (!state.inspector || !options.preserveInspector) {
@@ -145,7 +154,7 @@ function renderSummary(summary) {
 
 function renderFileTree() {
   fileTree.innerHTML = "";
-  if (!state.metastudyPayload) return;
+  if (!state.metastudyPayload?.file_tree) return;
   const root = state.metastudyPayload.file_tree;
   if (!state.expandedNodes.has(root.path)) {
     state.expandedNodes.add(root.path);
@@ -619,11 +628,16 @@ function scheduleWorkspaceRefresh() {
   if (!state.autoTail || !state.selectedMetastudyPath) return;
   workspaceTimer = window.setTimeout(async () => {
     try {
-      state.metastudyPayload = await fetchJson("/api/metastudy", {
+      const payload = await fetchJson("/api/metastudy", {
         path: state.selectedMetastudyPath,
+        include_file_tree: false,
       });
+      state.metastudyPayload = {
+        ...state.metastudyPayload,
+        ...payload,
+        file_tree: state.metastudyPayload?.file_tree,
+      };
       renderSummary(state.metastudyPayload.summary);
-      renderFileTree();
       renderAgentTree();
     } catch {
       // Leave the current tree visible; the inspector shows the connectivity issue.

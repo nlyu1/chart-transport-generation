@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
+import json.decoder
 import mimetypes
 import os
 import re
 import sys
-from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -122,12 +122,34 @@ def ensure_under(path: Path, roots: list[Path]) -> Path:
     raise PermissionError(f"path not allowed: {path}")
 
 
+def query_flag(query: dict[str, list[str]], key: str, *, default: bool = False) -> bool:
+    value = query.get(key, [None])[0]
+    if value is None:
+        return default
+    return value.lower() not in {"0", "false", "no", "off"}
+
+
 def read_last_lines(path: Path, lines: int = 200) -> str:
-    buffer: deque[str] = deque(maxlen=max(lines, 1))
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            buffer.append(line)
-    return "".join(buffer)
+    if lines <= 0:
+        return ""
+
+    chunk_size = 64 * 1024
+    newline_count = 0
+    chunks: list[bytes] = []
+
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        position = handle.tell()
+        while position > 0 and newline_count <= lines:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            chunks.append(chunk)
+            newline_count += chunk.count(b"\n")
+
+    text = b"".join(reversed(chunks)).decode("utf-8", errors="replace")
+    return "".join(text.splitlines(keepends=True)[-lines:])
 
 
 def read_file_preview(path: Path, *, lines: int | None = None, max_bytes: int = 1_000_000) -> str:
@@ -135,6 +157,30 @@ def read_file_preview(path: Path, *, lines: int | None = None, max_bytes: int = 
         return read_last_lines(path, lines=lines)
     raw = path.read_bytes()[:max_bytes]
     return raw.decode("utf-8", errors="replace")
+
+
+def iter_jsonl_records(
+    path: Path, *, ignore_incomplete_final_record: bool = False
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with path.open("rb") as handle:
+        while True:
+            raw_line = handle.readline()
+            if not raw_line:
+                break
+            if not raw_line.strip():
+                continue
+            try:
+                records.append(json.loads(raw_line))
+            except json.decoder.JSONDecodeError:
+                if (
+                    ignore_incomplete_final_record
+                    and not raw_line.endswith(b"\n")
+                    and handle.peek(1) == b""
+                ):
+                    break
+                raise
+    return records
 
 
 def parse_extra(extra: str) -> tuple[int | None, int | None, str | None]:
@@ -446,89 +492,85 @@ def parse_session(session_id: str) -> dict[str, Any]:
         "shell_snapshots": shell_snapshots_for(session_id),
     }
 
-    with session_path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            if not raw_line.strip():
-                continue
-            record = json.loads(raw_line)
-            record_type = record.get("type")
-            payload = record.get("payload", {})
+    for record in iter_jsonl_records(session_path, ignore_incomplete_final_record=True):
+        record_type = record.get("type")
+        payload = record.get("payload", {})
 
-            if record_type == "session_meta":
-                metadata["timestamp"] = payload.get("timestamp")
-                metadata["cwd"] = payload.get("cwd")
-                metadata["originator"] = payload.get("originator")
-                metadata["model_provider"] = payload.get("model_provider")
-                metadata["source"] = payload.get("source")
-                metadata["cli_version"] = payload.get("cli_version")
-                continue
+        if record_type == "session_meta":
+            metadata["timestamp"] = payload.get("timestamp")
+            metadata["cwd"] = payload.get("cwd")
+            metadata["originator"] = payload.get("originator")
+            metadata["model_provider"] = payload.get("model_provider")
+            metadata["source"] = payload.get("source")
+            metadata["cli_version"] = payload.get("cli_version")
+            continue
 
-            if record_type != "response_item":
-                continue
+        if record_type != "response_item":
+            continue
 
-            payload_type = payload.get("type")
-            if payload_type == "message":
-                text = extract_message_text(payload.get("content", []))
-                if not text.strip():
-                    continue
-                hidden_by_default = payload.get("role") in {"developer", "system"} or (
-                    payload.get("role") == "user" and len(text) > 4_000
-                )
-                items.append(
-                    {
-                        "kind": "message",
-                        "role": payload.get("role", "unknown"),
-                        "phase": payload.get("phase"),
-                        "text": text,
-                        "hidden_by_default": hidden_by_default,
-                    }
-                )
+        payload_type = payload.get("type")
+        if payload_type == "message":
+            text = extract_message_text(payload.get("content", []))
+            if not text.strip():
                 continue
+            hidden_by_default = payload.get("role") in {"developer", "system"} or (
+                payload.get("role") == "user" and len(text) > 4_000
+            )
+            items.append(
+                {
+                    "kind": "message",
+                    "role": payload.get("role", "unknown"),
+                    "phase": payload.get("phase"),
+                    "text": text,
+                    "hidden_by_default": hidden_by_default,
+                }
+            )
+            continue
 
-            if payload_type == "function_call":
-                items.append(
-                    {
-                        "kind": "tool_call",
-                        "tool_name": payload.get("name", "unknown"),
-                        "call_id": payload.get("call_id"),
-                        "text": payload.get("arguments", ""),
-                        "hidden_by_default": False,
-                    }
-                )
-                continue
+        if payload_type == "function_call":
+            items.append(
+                {
+                    "kind": "tool_call",
+                    "tool_name": payload.get("name", "unknown"),
+                    "call_id": payload.get("call_id"),
+                    "text": payload.get("arguments", ""),
+                    "hidden_by_default": False,
+                }
+            )
+            continue
 
-            if payload_type == "function_call_output":
-                items.append(
-                    {
-                        "kind": "tool_output",
-                        "call_id": payload.get("call_id"),
-                        "text": payload.get("output", ""),
-                        "hidden_by_default": False,
-                    }
-                )
-                continue
+        if payload_type == "function_call_output":
+            items.append(
+                {
+                    "kind": "tool_output",
+                    "call_id": payload.get("call_id"),
+                    "text": payload.get("output", ""),
+                    "hidden_by_default": False,
+                }
+            )
+            continue
 
-            if payload_type == "custom_tool_call":
-                items.append(
-                    {
-                        "kind": "tool_call",
-                        "tool_name": payload.get("name", "custom_tool"),
-                        "call_id": payload.get("call_id"),
-                        "text": payload.get("input", ""),
-                        "hidden_by_default": False,
-                    }
-                )
-                continue
+        if payload_type == "custom_tool_call":
+            items.append(
+                {
+                    "kind": "tool_call",
+                    "tool_name": payload.get("name", "custom_tool"),
+                    "call_id": payload.get("call_id"),
+                    "text": payload.get("input", ""),
+                    "hidden_by_default": False,
+                }
+            )
+            continue
 
-            if payload_type == "custom_tool_call_output":
-                items.append(
-                    {
-                        "kind": "tool_output",
-                        "call_id": payload.get("call_id"),
-                        "text": payload.get("output", ""),
-                        "hidden_by_default": False,
-                    }
-                )
+        if payload_type == "custom_tool_call_output":
+            items.append(
+                {
+                    "kind": "tool_output",
+                    "call_id": payload.get("call_id"),
+                    "text": payload.get("output", ""),
+                    "hidden_by_default": False,
+                }
+            )
 
     return {
         "metadata": metadata,
@@ -613,7 +655,7 @@ def important_files_for_target(target_path: Path) -> list[dict[str, str]]:
     return files
 
 
-def metastudy_payload(path: Path) -> dict[str, Any]:
+def metastudy_payload(path: Path, *, include_file_tree: bool = True) -> dict[str, Any]:
     run_log = path / "run.log"
     invocations = parse_run_log(run_log)
     agent_tree = build_agent_tree(path, invocations)
@@ -622,18 +664,20 @@ def metastudy_payload(path: Path) -> dict[str, Any]:
         invocation["important_files"] = important_files_for_target(Path(invocation["target_path"]))
         if invocation["session_id"]:
             invocation["session_path"] = str(session_file_for(invocation["session_id"])) if session_file_for(invocation["session_id"]) else None
-    return {
+    payload = {
         "summary": metastudy_summary(path),
         "paths": {
             "metastudy": str(path),
             "run_log": str(run_log),
             "readme": str(AUTORESEARCH_ROOT / "README.md"),
         },
-        "file_tree": file_tree(path),
         "agent_tree": agent_tree,
         "invocations": run_invocations,
         "run_log_tail": read_file_preview(run_log, lines=200) if run_log.exists() else "",
     }
+    if include_file_tree:
+        payload["file_tree"] = file_tree(path)
+    return payload
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -665,7 +709,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if path == "/api/metastudy":
                 target = normalize_query_path(query.get("path", [None])[0])
                 ensure_under(target, [METASTUDIES_ROOT])
-                return json_response(self, metastudy_payload(target))
+                include_file_tree = query_flag(query, "include_file_tree", default=True)
+                return json_response(
+                    self,
+                    metastudy_payload(target, include_file_tree=include_file_tree),
+                )
             if path == "/api/file":
                 requested = normalize_query_path(query.get("path", [None])[0])
                 ensure_under(requested, [METASTUDIES_ROOT, SESSIONS_ROOT, SHELL_SNAPSHOTS_ROOT, AUTORESEARCH_ROOT])
