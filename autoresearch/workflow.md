@@ -7,6 +7,7 @@ How to initiate and run a fully autonomous research campaign.
 ## Prerequisites
 
 - `metastudies/AGENTS.md` — shared agent constraints (read once)
+- `.agents/skills/metastudy-planner/SKILL.md` — interactive metastudy planning workflow
 - `autoresearch/README.md` — framework overview
 - Two GPUs available; training uses `bfloat16` and `uv`
 
@@ -31,7 +32,7 @@ See `metastudies/multimodal-gaussian-baseline/objective.md` as an example.
 
 ## Step 2 — Run the planner interactively
 
-The planner runs as an **interactive Codex session** — you can converse with it, steer the decomposition, and approve the result before execution begins.
+Metastudy planning now lives in the repo-local `metastudy-planner` skill. The planner runs in your current **interactive Codex session** — you can converse with it, steer the decomposition, and approve the result before execution begins.
 
 The session should begin by:
 - restating its interpretation of your objective
@@ -41,11 +42,19 @@ The session should begin by:
 
 If you approve a sharpened rewrite, the planner may update `objective.md` before writing the plan. It should end with a short handoff telling you what it wrote, what assumptions it used, what to review, and the next command to run.
 
+Optional validation helper:
+
 ```bash
-uv run python autoresearch/scripts/launch-metastudy-planner.py metastudies/<name>
+uv run python .agents/skills/metastudy-planner/scripts/launch.py metastudies/<name>
 ```
 
-The session will read `objective.md`, explore the library, and propose a decomposition into 3–8 studies. When the session ends, it will have written:
+Then plan in the current Codex session with:
+
+```text
+Use $metastudy-planner to plan or revise metastudies/<name> in this session.
+```
+
+The session will read `objective.md`, explore the library, and propose a decomposition into 3–8 studies. When planning ends, it will have written:
 - `metastudies/<name>/studies/<study-name>/objective.md` for each study
 - `metastudies/<name>/plan.md`
 
@@ -89,8 +98,6 @@ cat metastudies/<name>/studies/<study-name>/state.md
 Log line format:
 ```
 TIMESTAMP             ACTION  ROLE                PATH                              [exit:N  Ns]
-2026-03-29T17:00:00Z  START   metastudy-planner   .../multimodal-gaussian-baseline
-2026-03-29T17:02:30Z  DONE    metastudy-planner   .../multimodal-gaussian-baseline  exit:0  149s
 2026-03-29T17:05:00Z  START   metastudy-executor  .../multimodal-gaussian-baseline
 2026-03-29T17:05:01Z  START   study-executor      .../studies/2d-baseline
 2026-03-29T17:05:02Z  START   study-planner       .../studies/2d-baseline

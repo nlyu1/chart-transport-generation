@@ -2,9 +2,11 @@
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
   "python.terminal.activateEnvironment": false,
   "files.exclude": {
+    "**/.data": true,
     "**/.DS_Store": true,
     "**/.ignore": true,
     "**/.ipynb_checkpoints": true,
+    "**/.playwright-cli": true,
     "**/.pytest_cache": true,
     "**/.python-version": true,
     "**/.ruff_cache": true,
@@ -14,8 +16,10 @@
     "**/*.egg-info": true
   },
   "search.exclude": {
+    "**/.data": true,
     "**/.ignore": true,
     "**/.ipynb_checkpoints": true,
+    "**/.playwright-cli": true,
     "**/.pytest_cache": true,
     "**/.python-version": true,
     "**/.ruff_cache": true,
@@ -25,7 +29,9 @@
     "**/*.egg-info": true
   },
   "files.watcherExclude": {
+    "**/.data/**": true,
     "**/.ipynb_checkpoints/**": true,
+    "**/.playwright-cli/**": true,
     "**/.pytest_cache/**": true,
     "**/.ruff_cache/**": true,
     "**/.uv-cache/**": true,

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ def find_repo_root(*, start: Path) -> Path:
 
 REPO = find_repo_root(start=Path(__file__).resolve())
 METASTUDIES = REPO / "metastudies"
+SKILL_ROOT = REPO / ".agents" / "skills" / "metastudy-planner"
 
 
 def resolve_metastudy(raw_target: str) -> Path:
@@ -41,6 +41,7 @@ def build_planner_context(*, metastudy_path: Path) -> dict[str, object]:
     objective_path = metastudy_path / "objective.md"
     plan_path = metastudy_path / "plan.md"
     state_path = metastudy_path / "state.md"
+    skill_workflow_path = SKILL_ROOT / "references" / "metastudy-planner-workflow.md"
     return {
         "repo_root": str(REPO),
         "metastudy_path": str(metastudy_path),
@@ -53,22 +54,15 @@ def build_planner_context(*, metastudy_path: Path) -> dict[str, object]:
         "state_path": str(state_path),
         "state_repo_relative": repo_relative(state_path),
         "state_exists": state_path.is_file(),
-        "planner_prompt_path": str(REPO / "autoresearch/prompts/metastudy-planner.md"),
+        "skill_root": str(SKILL_ROOT),
+        "skill_workflow_path": str(skill_workflow_path),
         "theory_path": str(REPO / "theory/proposal.typ"),
         "shared_metastudy_agents_path": str(REPO / "metastudies/AGENTS.md"),
         "repo_agents_path": str(REPO / "AGENTS.md"),
-        "legacy_nested_command": [
-            "uv",
-            "run",
-            "python",
-            "autoresearch/scripts/launch-metastudy-planner.py",
-            repo_relative(metastudy_path),
-        ],
     }
 
 
 def render_text_context(*, context: dict[str, object]) -> str:
-    legacy_nested_command = shlex.join(context["legacy_nested_command"])
     return "\n".join(
         [
             "Metastudy planner context",
@@ -80,14 +74,14 @@ def render_text_context(*, context: dict[str, object]) -> str:
             "",
             "Use the current Codex session as the planner.",
             "Read these first:",
-            f"- {Path(str(context['planner_prompt_path'])).relative_to(REPO)}",
+            f"- {Path(str(context['skill_workflow_path'])).relative_to(REPO)}",
             f"- {Path(str(context['shared_metastudy_agents_path'])).relative_to(REPO)}",
             f"- {Path(str(context['repo_agents_path'])).relative_to(REPO)}",
             f"- {Path(str(context['objective_path'])).relative_to(REPO)}",
             f"- {Path(str(context['theory_path'])).relative_to(REPO)}",
             "",
-            "Do not launch a nested interactive Codex session unless the user explicitly requests the legacy behavior.",
-            f"Legacy nested command: {legacy_nested_command}",
+            "The skill workflow is self-contained under .agents/skills/metastudy-planner/.",
+            "Plan in the current Codex session; no autoresearch planner launcher is required.",
         ]
     )
 

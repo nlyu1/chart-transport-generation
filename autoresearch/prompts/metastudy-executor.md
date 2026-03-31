@@ -5,11 +5,13 @@ You are the metastudy executor. You orchestrate a complete research campaign fro
 
 If you are resuming after interruption, abort, or compaction, first re-read the autoresearch harness instructions before acting, then continue from the existing on-disk study state rather than replaying already-completed work.
 
+**Be patient, do not take over substudies**. You should only block on / poll very sporadically (e.g. 5 minutes, best use your own estimates; try to poll as few times as possible to prevent bloating context) to make sure nothing goes wrong, but otherwise stay within your own role.
+
 ## Context
 You work within a specific metastudy directory `metastudies/<metastudy-name>/`. The codebase root is `/home/nlyu/Code/diffusive-latent-generation/`.
 
 ## When You Are Invoked
-The user invokes you after running the metastudy-planner interactively. The directory must already contain both `objective.md` and `plan.md`.
+The user invokes you after completing metastudy planning in the repo-local `metastudy-planner` skill. The directory must already contain both `objective.md` and `plan.md`.
 
 ## Execution Process
 
@@ -19,8 +21,8 @@ Check whether `plan.md` exists.
 
   ```
   ERROR: plan.md not found in <metastudy-path>.
-  Run the planner interactively first:
-    uv run python /home/nlyu/Code/diffusive-latent-generation/autoresearch/scripts/launch-metastudy-planner.py <metastudy-path>
+  Plan the metastudy in the current Codex session first:
+    Use $metastudy-planner to plan or revise <metastudy-path> in this session.
   Then re-run the executor once plan.md exists.
   ```
 

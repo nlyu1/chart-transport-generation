@@ -39,6 +39,12 @@ def get_canonical_chart_transport_configs(
     prior_precision = 2.0
     hidden_dimension = 512
     time_embedding_dimension = 512
+    n_hidden_layers = 6
+    transport_step_size = 0.05
+    transport_step_cap = 0.05
+    n_critic_updates_every_transport_step = 4
+
+    hidden_layer_dims = [hidden_dimension] * n_hidden_layers
 
     prior_config = AnchoredGaussianScaleMixturePriorConfig.initialize(
         latent_shape=[latent_dimension],
@@ -70,8 +76,8 @@ def get_canonical_chart_transport_configs(
     """Defining the transport field & approximations"""
     transport_config = TransportLossConfig(
         kl_weight_schedule=UniformVelocityMatchingSchedule(),
-        transport_step_size=0.1,
-        transport_step_cap=0.1,
+        transport_step_size=transport_step_size,
+        transport_step_cap=transport_step_cap,
         num_time_samples=8,
         t_range=(MIN_T, 0.99),
         antipodal_estimate=True,
@@ -90,7 +96,7 @@ def get_canonical_chart_transport_configs(
     scheduling_config = ChartTransportSchedulingConfig(
         pretrain_chart_n_steps=1000,
         pretrain_critic_n_steps=1000,
-        n_critic_updates_every_transport_step=2,
+        n_critic_updates_every_transport_step=n_critic_updates_every_transport_step,
     )
 
     critic_time_conditioning_config = TimeConditioningConfig(
@@ -104,30 +110,21 @@ def get_canonical_chart_transport_configs(
         encoder=StackedResidualMLPConfig.initialize(
             layer_dims=[
                 data_config.data_numel(),
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
+                *hidden_layer_dims,
                 latent_dimension,
             ],
         ),
         decoder=StackedResidualMLPConfig.initialize(
             layer_dims=[
                 latent_dimension,
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
+                *hidden_layer_dims,
                 data_config.data_numel(),
             ],
         ),
         critic=StackedResidualMLPConfig.initialize(
             layer_dims=[
                 latent_dimension,
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
-                hidden_dimension,
+                *hidden_layer_dims,
                 latent_dimension,
             ],
             time_conditioning_config=critic_time_conditioning_config,

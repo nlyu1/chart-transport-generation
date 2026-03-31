@@ -1,6 +1,6 @@
 # autoresearch
 
-A hierarchical agentic research framework for structured experimental investigation. Agents plan, execute, and review experiments at three levels of granularity, chaining automatically from a single user invocation.
+A hierarchical agentic research framework for structured experimental investigation. Metastudy planning now lives in the repo-local skill at `.agents/skills/metastudy-planner/`; `autoresearch` starts once a metastudy already has `plan.md`, then executes and reviews the work across study and substudy levels.
 
 ## Hierarchy
 
@@ -16,7 +16,6 @@ metastudy/          ← research campaign (weeks-to-months scope)
 
 | Agent | Role | Invoked by |
 |---|---|---|
-| `metastudy-planner` | Interactively sharpens a metastudy objective if needed, then decomposes it into an ordered sequence of studies | `metastudy-executor` (or user) |
 | `metastudy-executor` | Orchestrates studies end-to-end; synthesizes the final report; may spawn follow-up studies | User |
 | `metastudy-reviewer` | Critically assesses the completed metastudy against its objective | `metastudy-executor` |
 | `study-planner` | Decomposes a study objective into concrete, independent single-GPU substudies | `study-executor` |
@@ -26,11 +25,10 @@ metastudy/          ← research campaign (weeks-to-months scope)
 
 ## Invocation
 
-The user invokes `metastudy-executor` with a metastudy directory path. Everything else is automatic:
+First, plan the metastudy in the current Codex session with `.agents/skills/metastudy-planner/`. Once `plan.md` exists, the user invokes `metastudy-executor` with a metastudy directory path. Everything after that point is automatic:
 
 ```
 metastudy-executor(<metastudy-dir>)
-  └── metastudy-planner          [if plan.md missing]
   └── study-executor × N         [one per study in plan]
         └── study-planner        [if plan.md missing]
         └── substudy-executor × M    [queued in parallel, up to one active substudy per present GPU]
@@ -69,7 +67,7 @@ Entry format:
 
 ## Resumability
 
-Executors check `state.md` at startup to identify already-completed sub-units and skip them. An interrupted run can be re-invoked from the top level and will pick up where it left off.
+Executors check `state.md` at startup to identify already-completed sub-units and skip them. An interrupted run can be re-invoked from the top level and will pick up where it left off, assuming the metastudy plan already exists.
 
 ## Shared Constraints
 
