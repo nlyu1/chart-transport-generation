@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from typing import Self
 
+import torch
 import torch.nn as nn
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from pydantic import model_validator
 from torch import Tensor
 
 from src.model.base import ModelConfig
-from src.model.time_conditioning import TimeConditioningConfig
+from src.model.time_conditioning import (
+    CategoricalConditioningConfig,
+    TimeConditioningConfig,
+)
 
 
 class MLP(nn.Module):
@@ -67,8 +71,7 @@ class ResidualMLPConfig(ModelConfig):
     input_dim: int
     hidden_dim: int
     output_dim: int
-    condition_time: bool
-    time_embedding_dim: int
+    condition_dim: int
 
     @classmethod
     def initialize(
@@ -76,15 +79,13 @@ class ResidualMLPConfig(ModelConfig):
         *,
         input_dim: int,
         output_dim: int,
-        condition_time: bool,
-        time_embedding_dim: int,
+        condition_dim: int,
     ) -> Self:
         return cls(
             input_dim=input_dim,
             hidden_dim=2 * max(input_dim, output_dim),
             output_dim=output_dim,
-            condition_time=condition_time,
-            time_embedding_dim=time_embedding_dim,
+            condition_dim=condition_dim,
         )
 
     @property
@@ -103,9 +104,10 @@ class ResidualMLP(nn.Module):
         self.config = config
         self.layer_norm = nn.LayerNorm(config.input_dim)
         self.mlp = config.mlp_config.get_model()
-        if config.condition_time:
-            self.time_projection = nn.Linear(
-                in_features=config.time_embedding_dim,
+        self.conditioning_projection = None
+        if config.condition_dim > 0:
+            self.conditioning_projection = nn.Linear(
+                in_features=config.condition_dim,
                 out_features=config.input_dim,
                 bias=True,
             )
@@ -121,13 +123,13 @@ class ResidualMLP(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "... input_dim"],
-        embedding: Float[Tensor, "... time_embedding_dim"] | None = None,
+        conditioning: Float[Tensor, "... condition_dim"] | None = None,
     ) -> Float[Tensor, "... output_dim"]:
         hidden = self.layer_norm(x)
-        if self.config.condition_time:
-            if embedding is None:
-                raise ValueError("embedding is required when condition_time=True")
-            hidden = hidden + self.time_projection(embedding)
+        if self.conditioning_projection is not None:
+            if conditioning is None:
+                raise ValueError("conditioning is required when condition_dim > 0")
+            hidden = hidden + self.conditioning_projection(conditioning)
         residual = self.residual_projection(x)
         return residual + self.mlp(hidden)
 
@@ -135,6 +137,7 @@ class ResidualMLP(nn.Module):
 class StackedResidualMLPConfig(ModelConfig):
     layer_dims: list[int]
     blocks_configs: list[ResidualMLPConfig]
+    cat_conditioning_config: CategoricalConditioningConfig | None = None
     time_conditioning_config: TimeConditioningConfig | None = None
 
     @classmethod
@@ -142,21 +145,27 @@ class StackedResidualMLPConfig(ModelConfig):
         cls,
         *,
         layer_dims: list[int],
+        cat_conditioning_config: CategoricalConditioningConfig | None = None,
         time_conditioning_config: TimeConditioningConfig | None = None,
     ) -> Self:
-        time_embedding_dim = (
-            0
-            if time_conditioning_config is None
-            else time_conditioning_config.output_dim
-        )
+        """
+        The high-level module is responsible
+        for producing a single conditioning vector by concatenating all active
+        conditioning sources. Lower-level MLPs then define their own projection
+        of this unified conditioning input.
+        """
+        condition_dim = 0
+        if time_conditioning_config is not None:
+            condition_dim += time_conditioning_config.condition_dim
+        if cat_conditioning_config is not None:
+            condition_dim += cat_conditioning_config.condition_dim
         return cls(
             layer_dims=layer_dims,
             blocks_configs=[
                 ResidualMLPConfig.initialize(
                     input_dim=input_dim,
                     output_dim=output_dim,
-                    condition_time=time_conditioning_config is not None,
-                    time_embedding_dim=time_embedding_dim,
+                    condition_dim=condition_dim,
                 )
                 for input_dim, output_dim in zip(
                     layer_dims[:-1],
@@ -164,6 +173,7 @@ class StackedResidualMLPConfig(ModelConfig):
                     strict=True,
                 )
             ],
+            cat_conditioning_config=cat_conditioning_config,
             time_conditioning_config=time_conditioning_config,
         )
 
@@ -184,6 +194,9 @@ class StackedResidualMLP(nn.Module):
         self.time_conditioning = None
         if config.time_conditioning_config is not None:
             self.time_conditioning = config.time_conditioning_config.get_model()
+        self.cat_conditioning = None
+        if config.cat_conditioning_config is not None:
+            self.cat_conditioning = config.cat_conditioning_config.get_model()
         self.blocks = nn.ModuleList(
             block_config.get_model() for block_config in config.blocks_configs
         )
@@ -192,13 +205,23 @@ class StackedResidualMLP(nn.Module):
         self,
         x: Float[Tensor, "batch input_dim"],
         t: Float[Tensor, "batch"] | None = None,
+        categorical: Int[Tensor, "batch"] | None = None,
     ) -> Float[Tensor, "batch output_dim"]:
-        embedding = None
+        conditionings: list[Float[Tensor, "batch condition_dim"]] = []
         if self.time_conditioning is not None:
             if t is None:
                 raise ValueError("t is required when time_conditioning_config is set")
-            embedding = self.time_conditioning(t)
+            conditionings.append(self.time_conditioning(t))
+        if self.cat_conditioning is not None:
+            if categorical is None:
+                raise ValueError(
+                    "categorical is required when cat_conditioning_config is set"
+                )
+            conditionings.append(self.cat_conditioning(categorical))
+        conditioning = None
+        if conditionings:
+            conditioning = torch.cat(conditionings, dim=-1)
         hidden = x
         for block in self.blocks:
-            hidden = block(hidden, embedding=embedding)
+            hidden = block(hidden, conditioning=conditioning)
         return hidden
