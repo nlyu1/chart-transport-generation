@@ -13,6 +13,7 @@ from pathlib import Path
 
 REPO = Path(__file__).parent.parent.parent          # scripts/ -> autoresearch/ -> repo root
 AUTORESEARCH = Path(__file__).parent.parent        # scripts/ -> autoresearch/
+CONTEXT_DIR = AUTORESEARCH / "context"
 # Override via AUTORESEARCH_MODEL env var if needed
 MODEL = os.environ.get("AUTORESEARCH_MODEL", "gpt-5.4")
 SESSION_ID_PATTERN = re.compile(r"session id:\s*([0-9a-f-]+)", re.IGNORECASE)
@@ -20,6 +21,17 @@ SESSION_ID_PATTERN = re.compile(r"session id:\s*([0-9a-f-]+)", re.IGNORECASE)
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _default_context_parts() -> list[str]:
+    """Load shared autoresearch context snippets that should accompany all roles."""
+    shared_context = CONTEXT_DIR / "organization.md"
+    if not shared_context.exists():
+        return []
+    return [
+        "Shared autoresearch organization context:\n"
+        f"{shared_context.read_text().rstrip()}"
+    ]
 
 
 def log_event(
@@ -124,7 +136,7 @@ def launch(
 
     instructions = instructions_file.read_text()
 
-    extra_context_parts: list[str] = []
+    extra_context_parts: list[str] = _default_context_parts()
     if extra_context:
         extra_context_parts.append(extra_context.rstrip())
     env_extra_context = os.environ.get("AUTORESEARCH_EXTRA_CONTEXT", "").strip()

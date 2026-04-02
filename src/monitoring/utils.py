@@ -135,6 +135,7 @@ def fit_latent_pca_projection(
     *,
     reference_points: Float[Tensor, "batch ..."],
     projection_dim: int,
+    center_at_zero: bool = False,
 ) -> tuple[
     Float[Tensor, "1 latent_dim"],
     Float[Tensor, "latent_dim projection_dim"],
@@ -143,8 +144,16 @@ def fit_latent_pca_projection(
         raise ValueError("projection_dim must be positive")
 
     flat_reference_points = flatten_latents(reference_points)
-    projection_center = flat_reference_points.mean(dim=0, keepdim=True)
-    centered_points = flat_reference_points - projection_center
+    if center_at_zero:
+        projection_center = torch.zeros(
+            (1, flat_reference_points.shape[-1]),
+            device=flat_reference_points.device,
+            dtype=flat_reference_points.dtype,
+        )
+        centered_points = flat_reference_points
+    else:
+        projection_center = flat_reference_points.mean(dim=0, keepdim=True)
+        centered_points = flat_reference_points - projection_center
 
     if flat_reference_points.shape[-1] == 1:
         projection_basis = torch.zeros(
@@ -176,6 +185,7 @@ def project_latents_to_pca_space(
     reference_points: Float[Tensor, "batch ..."],
     points: Float[Tensor, "batch ..."],
     projection_dim: int,
+    center_at_zero: bool = False,
 ) -> tuple[
     Float[Tensor, "batch projection_dim"],
     Float[Tensor, "batch"],
@@ -183,6 +193,7 @@ def project_latents_to_pca_space(
     projection_center, projection_basis = fit_latent_pca_projection(
         reference_points=reference_points,
         projection_dim=projection_dim,
+        center_at_zero=center_at_zero,
     )
     flat_points = flatten_latents(points)
     centered_points = flat_points - projection_center
@@ -199,10 +210,12 @@ def project_latent_vectors_to_pca_space(
     reference_points: Float[Tensor, "batch ..."],
     vectors: Float[Tensor, "batch ..."],
     projection_dim: int,
+    center_at_zero: bool = False,
 ) -> Float[Tensor, "batch projection_dim"]:
     _, projection_basis = fit_latent_pca_projection(
         reference_points=reference_points,
         projection_dim=projection_dim,
+        center_at_zero=center_at_zero,
     )
     return flatten_latents(vectors) @ projection_basis
 
@@ -229,6 +242,7 @@ def build_latent_grid(
     *,
     reference_points: Float[Tensor, "batch ..."],
     resolution: int,
+    center_at_zero: bool = False,
 ) -> tuple[
     Float[Tensor, "grid latent_dim"],
     Float[Tensor, "resolution"],
@@ -238,6 +252,7 @@ def build_latent_grid(
         reference_points=reference_points,
         points=reference_points,
         projection_dim=2,
+        center_at_zero=center_at_zero,
     )
     x_min, x_max, y_min, y_max = latent_square_limits(
         projected_points,
@@ -265,6 +280,7 @@ def build_latent_grid(
     projection_center, projection_basis = fit_latent_pca_projection(
         reference_points=reference_points,
         projection_dim=2,
+        center_at_zero=center_at_zero,
     )
     grid_points = (
         projection_center + projected_grid_points @ projection_basis.transpose(0, 1)
