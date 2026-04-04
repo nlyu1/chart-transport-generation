@@ -134,24 +134,22 @@ class StochasticChartTransportLossConfig(BaseConfig):
         *,
         data_sample: Float[Tensor, "batch ..."],
         model_sample: Float[Tensor, "batch ..."],
-        data_fiber: Float[Tensor, "batch ..."],
-        model_fiber: Float[Tensor, "batch ..."],
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> Loss:
         """
-        Both latents could be detached.
-        They are only used for computing the targets.
         Since parts of the computation could be re-used from other components
             of training, we accept redundant information.
 
-        **It is the caller's responsibility to ensure that the input latents
-            are obtained from the given sample and fiber**
+        **It is the caller's responsibility to ensure that latents
+            are produced from samples with gradients attached**
         """
         # Rescale and clip
         combined_transport_field: Float[Tensor, "b ..."] = clip_norm(
             self._estimate_transport_field(
-                state, data_latent=data_latent, model_latent=model_latent
+                state,
+                data_latent=data_latent.detach(),
+                model_latent=model_latent.detach(),
             )
             * self.transport_step_multiplier,
             max_norm=self.transport_step_cap,
@@ -160,26 +158,23 @@ class StochasticChartTransportLossConfig(BaseConfig):
             torch.cat([data_latent, model_latent]) + combined_transport_field
         ).detach()
         combined_sample = torch.cat([data_sample, model_sample])
-        combined_fiber = torch.cat([data_fiber, model_fiber])
         # We only supervise the data component, not the fiber component
-        reconstructed_combined_sample, _ = state.fiber_packing.unpack(
+        reconstructed_combined_sample, _ = state.unpack_fiber(
             state.model.decoder(combined_transported_latent)
         )
         decoder_loss = (
             F.huber_loss(
                 reconstructed_combined_sample,
-                combined_sample,
+                combined_sample.detach(),
                 delta=self.decoder_huber_delta,
                 reduction="mean",
             )
             * self.decoder_transport_weight
         )
-        # Transport step cap gives the huber
+        # Transport step cap is responsible for well-conditioning the mse target
         encoder_loss = (
             F.mse_loss(
-                state.model.encoder(
-                    state.fiber_packing.pack(combined_sample, combined_fiber)
-                ),
+                torch.cat([data_latent, model_latent]),
                 combined_transported_latent,
                 reduction="mean",
             )

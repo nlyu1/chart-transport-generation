@@ -41,7 +41,11 @@ class CriticLossConfig(BaseConfig):
     def epsilon_like(
         self, *, latent: Float[Tensor, "batch ..."]
     ) -> Float[Tensor, "batch ..."]:
-        return torch.randn((latent.shape[0], *latent.shape[1:]), device=latent.device)
+        return torch.randn(
+            (latent.shape[0], *latent.shape[1:]),
+            device=latent.device,
+            dtype=latent.dtype,
+        )
 
     def apply_mixture(
         self,
@@ -66,7 +70,11 @@ class CriticLossConfig(BaseConfig):
 
         batch_size = data_latent.shape[0]
         data_t = self.rescale_unit_t(
-            t=torch.rand((batch_size,), device=data_latent.device)
+            t=torch.rand(
+                (batch_size,),
+                device=data_latent.device,
+                dtype=data_latent.dtype,
+            )
         )
         data_epsilon = self.epsilon_like(latent=data_latent)
         data_noised_latent = self.apply_mixture(
@@ -76,7 +84,11 @@ class CriticLossConfig(BaseConfig):
         )
 
         model_t = self.rescale_unit_t(
-            t=torch.rand((batch_size,), device=model_latent.device)
+            t=torch.rand(
+                (batch_size,),
+                device=model_latent.device,
+                dtype=model_latent.dtype,
+            )
         )
         model_epsilon = self.epsilon_like(latent=model_latent)
         model_noised_latent = self.apply_mixture(
