@@ -110,21 +110,17 @@ class ChartPretrainConfig(BaseConfig):
         compute_anchor_loss: bool,
     ) -> ChartPretrainConfig.Loss:
         """
-        Model forward-pass computations:
-        1. decoder(data latent) -> (reconstructed_data, reconstructed_data_fiber)
+        Computes the chart constraint terms while reusing caller-provided
+        forward-pass values.
 
-        To re-use computation, **it is the caller's responsibility** to ensure:
-        1. encoder(data, data_fiber) -> data_latent
-        2. decoder(prior) -> (model_sample, model_fiber)
-
-        These computations should be done with full gradients attached
+        Caller contract:
+        1. `data_latent` must be the attached output of `encode(data, data_fiber)`.
+        2. `model_sample, model_fiber` must come from `decode(prior)`.
+        3. `model_sample` and `model_fiber` must stay attached if the
+           prior-roundtrip is meant to train the decoder.
         """
-        model = state.model
-
-        reconstructed_data, reconstructed_data_fiber = state.unpack_fiber(
-            model.decoder(data_latent)
-        )
-        reconstructed_prior = model.encoder(state.pack_fiber(model_sample, model_fiber))
+        reconstructed_data, reconstructed_data_fiber = state.decode(data_latent)
+        reconstructed_prior = state.encode(data=model_sample, fiber=model_fiber)
 
         reconstruction_loss = self.reconstruction_config.apply(
             data=data,

@@ -79,8 +79,8 @@ class StochasticChartTransportLossConfig(BaseConfig):
             for j in range(self.num_time_samples):
                 t = noise_t[:, j]
 
-                epsilon = state.critic_config.epsilon_like(latent=combined_latent)
-                noised_latent = state.critic_config.apply_mixture(
+                epsilon = state.config.critic.epsilon_like(latent=combined_latent)
+                noised_latent = state.config.critic.apply_mixture(
                     latent=combined_latent, epsilon=epsilon, t=t
                 )
                 # The actual score is -1.0 * noise_estimates / t
@@ -91,7 +91,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
                     y_t=noised_latent, t=t
                 )
                 if self.antipodal_estimate:
-                    antipodal_noised_latent = state.critic_config.apply_mixture(
+                    antipodal_noised_latent = state.config.critic.apply_mixture(
                         latent=combined_latent, epsilon=-epsilon, t=t
                     )
                     antipodal_noise_estimates = state.model.critic(
@@ -138,11 +138,16 @@ class StochasticChartTransportLossConfig(BaseConfig):
         model_latent: Float[Tensor, "batch ..."],
     ) -> Loss:
         """
-        Since parts of the computation could be re-used from other components
-            of training, we accept redundant information.
+        Transport supervision reusing caller-provided current-step tensors.
 
-        **It is the caller's responsibility to ensure that latents
-            are produced from samples with gradients attached**
+        Caller contract:
+        1. `data_latent` and `model_latent` must be fresh current-step latents
+           with encoder gradients attached if `encoder_loss` should train the
+           encoder.
+        2. The transport field and transported latent target are always treated
+           as detached targets.
+        3. `model_sample` is only a decoder-loss target here; its value may be
+           detached by the caller without changing transport decoder semantics.
         """
         # Rescale and clip
         combined_transport_field: Float[Tensor, "b ..."] = clip_norm(
@@ -159,9 +164,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
         ).detach()
         combined_sample = torch.cat([data_sample, model_sample])
         # We only supervise the data component, not the fiber component
-        reconstructed_combined_sample, _ = state.unpack_fiber(
-            state.model.decoder(combined_transported_latent)
-        )
+        reconstructed_combined_sample, _ = state.decode(combined_transported_latent)
         decoder_loss = (
             F.huber_loss(
                 reconstructed_combined_sample,

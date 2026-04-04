@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 from torch import Tensor
+from torch.nn.utils import clip_grad_norm_
 
 from src.common.training import BaseLoss
 from src.config.base import BaseConfig
@@ -58,10 +59,25 @@ class StochasticChartTransportStudyState(BaseConfig):
         )
 
     def get_constraint_loss(
-        self, *, data: Float[Tensor, "batch ..."], compute_anchor_loss: bool
+        self,
+        *,
+        data: Float[Tensor, "batch ..."],
+        data_fiber: Float[Tensor, "batch ..."],
+        data_latent: Float[Tensor, "batch ..."],
+        model_sample: Float[Tensor, "batch ..."],
+        model_fiber: Float[Tensor, "batch ..."],
+        prior: Float[Tensor, "batch ..."],
+        compute_anchor_loss: bool,
     ) -> ChartPretrainConfig.Loss:
         return self.config.pretrain.apply(
-            state=self, data=data, compute_anchor_loss=compute_anchor_loss
+            state=self,
+            data=data,
+            data_fiber=data_fiber,
+            data_latent=data_latent,
+            model_sample=model_sample,
+            model_fiber=model_fiber,
+            prior=prior,
+            compute_anchor_loss=compute_anchor_loss,
         )
 
     def get_critic_loss(
@@ -81,8 +97,6 @@ class StochasticChartTransportStudyState(BaseConfig):
         *,
         data_sample: Float[Tensor, "batch ..."],
         model_sample: Float[Tensor, "batch ..."],
-        data_fiber: Float[Tensor, "batch ..."],
-        model_fiber: Float[Tensor, "batch ..."],
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> StochasticChartTransportLossConfig.Loss:
@@ -90,8 +104,6 @@ class StochasticChartTransportStudyState(BaseConfig):
             self,
             data_sample=data_sample,
             model_sample=model_sample,
-            data_fiber=data_fiber,
-            model_fiber=model_fiber,
             data_latent=data_latent,
             model_latent=model_latent,
         )
@@ -102,10 +114,10 @@ class StochasticChartTransportStudyState(BaseConfig):
         batch_size = data.shape[0]
         prior = self.prior_config.sample(batch_size=batch_size).type_as(data)
 
-        data_fiber = self.get_fiber(batch_size=batch_size * 2).type_as(data)
+        data_fiber = self.get_fiber(batch_size=batch_size).type_as(data)
 
-        data_latent = self.model.encoder(self.pack_fiber(data, data_fiber))
-        model_sample, model_fiber = self.unpack_fiber(self.model.decoder(data_latent))
+        data_latent = self.encode(data=data, fiber=data_fiber)
+        model_sample, model_fiber = self.decode(prior)
         return self.get_constraint_loss(
             data=data,
             data_fiber=data_fiber,
@@ -122,10 +134,11 @@ class StochasticChartTransportStudyState(BaseConfig):
         batch_size = data.shape[0]
         prior = self.prior_config.sample(batch_size=batch_size).type_as(data)
         with torch.no_grad():
-            model_samples, _ = self.unpack_fiber(self.model.decoder(prior))
+            model_samples, _ = self.decode(prior)
             combined_fibers = self.get_fiber(batch_size=batch_size * 2).type_as(data)
-            data_latent, model_latent = self.model.encoder(
-                self.pack_fiber(torch.cat([data, model_samples]), combined_fibers)
+            data_latent, model_latent = self.encode(
+                data=torch.cat([data, model_samples], dim=0),
+                fiber=combined_fibers,
             ).chunk(2, dim=0)
         return self.get_critic_loss(data_latent=data_latent, model_latent=model_latent)
 
@@ -133,11 +146,11 @@ class StochasticChartTransportStudyState(BaseConfig):
     class IntegratedLoss(BaseLoss):
         chart_loss: ChartPretrainConfig.Loss
         critic_loss: CriticLossConfig.Loss
-        transport_loss: StochasticChartTransportLossConfig | None
+        transport_loss: StochasticChartTransportLossConfig.Loss | None
 
         def sum(self):
             return (
-                self.constraint_loss.sum()
+                self.chart_loss.sum()
                 + self.critic_loss.sum()
                 + (self.transport_loss.sum() if self.transport_loss else 0.0)
             )
@@ -148,34 +161,42 @@ class StochasticChartTransportStudyState(BaseConfig):
         compute_transport_loss: bool,
     ) -> IntegratedLoss:
         """
-        Always computes chart + critic losses.
-        1. Chart + critic + transport
-        2. Chart + critic
+        Always computes chart + critic losses, and optionally transport.
 
-        If we're only computing transport, we can always cheaply compute
-            the other two losses ~for free. If only chart or critic,
-            can use optimized versions
+        Gradient contract:
+        1. `chart_loss` must see the attached decoded prior sample so the
+           prior-roundtrip continues to train the decoder through both sample
+           and fiber outputs.
+        2. `critic_loss` must see detached latents.
+        3. `transport_loss.encoder` must *not* backpropagate into the decoder
+           through the model branch. We therefore reuse a detached copy of the
+           decoded model sample only for the shared latent-estimation path.
         """
+        batch_size = data.shape[0]
         # Model-independent sampling quantities
         prior = self.prior_config.sample(batch_size=batch_size).type_as(data)
 
         # Sample fibers
-        combined_fiber = self.get_fiber(batch_size=state.batch_size * 2).type_as(data)
-        data_fiber, model_fiber = combined_fiber.chunk(2, dim=0)
+        combined_fiber = self.get_fiber(batch_size=batch_size * 2).type_as(data)
+        data_fiber, _ = combined_fiber.chunk(2, dim=0)
 
-        # Decode to obtain model samples
-        decoded_prior = state.model.decoder(prior)
-        model_sample, model_decoded_fiber = self.unpack_fiber(decoded_prior)
+        # Decode once. The attached tensors feed the chart constraint path.
+        model_sample, model_decoded_fiber = self.decode(prior)
+        # Only the latent-estimation path should ignore decoder gradients from
+        # the model branch. Keep `model_sample` itself attached for chart loss.
+        model_sample_for_latent = model_sample.detach()
 
-        # Compute model and data latent
-        combined_sample = torch.cat([data, model_sample])
-        data_latent, model_latent = state.model.encoder(
-            state.fiber_packing.pack(combined_sample, combined_fiber)
+        # Reuse one encoder pass for data and model latents. The model half uses
+        # the detached sample copy so transport encoder supervision only trains
+        # the encoder, not the decoder.
+        combined_sample = torch.cat([data, model_sample_for_latent], dim=0)
+        data_latent, model_latent = self.encode(
+            data=combined_sample,
+            fiber=combined_fiber,
         ).chunk(2, dim=0)
 
         # Compute losses
-        chart_loss = state.get_constraint_loss(
-            state,
+        chart_loss = self.get_constraint_loss(
             data=data,
             data_fiber=data_fiber,
             data_latent=data_latent,
@@ -186,33 +207,60 @@ class StochasticChartTransportStudyState(BaseConfig):
             compute_anchor_loss=False,
         )
 
-        critic_loss = state.get_critic_loss(
+        critic_loss = self.get_critic_loss(
             data_latent=data_latent.detach(), model_latent=model_latent.detach()
         )
 
         transport_loss = None
         if compute_transport_loss:
-            transport_loss = state.get_transport_loss(
-                state,
+            transport_loss = self.get_transport_loss(
                 data_sample=data,
                 model_sample=model_sample,
                 data_latent=data_latent,
                 model_latent=model_latent,
             )
-        return IntegratedLoss(
+        return self.IntegratedLoss(
             chart_loss=chart_loss,
             critic_loss=critic_loss,
             transport_loss=transport_loss,
         )
 
     def get_fiber(self, *, batch_size):
-        return self.config.fiber_packing.get_fiber
+        return self.config.fiber_packing.get_fiber(batch_size=batch_size)
 
-    def pack_fiber(self, *, data, fiber):
-        return self.config.fiber_packing.pack(data=data, fiber=fiber)
+    def encode(
+        self,
+        *,
+        data: Float[Tensor, "batch ..."],
+        fiber: Float[Tensor, "batch ..."],
+    ) -> Float[Tensor, "batch ..."]:
+        """Pack `(data, fiber)` and run the encoder.
 
-    def unpack_fiber(self, data_with_fiber):
-        return self.config.fiber_packing.unpack(data_with_fiber)
+        Gradients flow through both `data` and encoder parameters unless the
+        caller explicitly detaches or uses `torch.no_grad()`.
+        """
+        return self.model.encoder(
+            self.config.fiber_packing.pack(data=data, fiber=fiber)
+        )
+
+    def decode(
+        self,
+        latent: Float[Tensor, "batch ..."],
+    ) -> tuple[Float[Tensor, "batch ..."], Float[Tensor, "batch ..."]]:
+        """Run the decoder and unpack `(sample, fiber)`.
+
+        Returned tensors remain attached to the decoder graph unless the caller
+        explicitly detaches or uses `torch.no_grad()`.
+        """
+        return self.config.fiber_packing.unpack(self.model.decoder(latent))
+
+    def step_and_zero_grad(self) -> None:
+        clip_grad_norm_(
+            self.model.parameters(),
+            max_norm=self.config.model.grad_clip_norm,
+        )
+        self.op.step()
+        self.op.zero_grad(set_to_none=True)
 
     @property
     def prior_config(self) -> BasePriorConfig:
