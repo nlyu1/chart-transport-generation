@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
+from jaxtyping import Float
+from torch import Tensor
+
 from src.config.base import BaseConfig
+
+
+@dataclass
+class BaseLoss(ABC):
+    @abstractmethod
+    def sum(self) -> Float[Tensor, ""]:
+        raise NotImplementedError
 
 
 class TrainingConfig(BaseConfig):
@@ -53,5 +65,4 @@ class TrainingConfig(BaseConfig):
             raise_on_existing_folder=raise_on_existing_folder,
         )
 
-
-__all__ = ["TrainingConfig"]
+__all__ = ["BaseLoss", "TrainingConfig"]

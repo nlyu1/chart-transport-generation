@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from torch import optim
 import torch.nn as nn
+from torch import optim
 
 from src.config.base import BaseConfig
 from src.model.base import ModelConfig
@@ -49,7 +49,6 @@ class ChartTransportModelConfig(BaseConfig):
 
     def get_optimizer(
         self,
-        *,
         model: ChartTransportModel,
     ) -> optim.Optimizer:
         return optim.AdamW(

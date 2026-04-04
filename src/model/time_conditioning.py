@@ -84,6 +84,10 @@ class TimeConditioningConfig(ModelConfig):
 
     @model_validator(mode="after")
     def _validate_config(self) -> "TimeConditioningConfig":
+        if self.min_t_lambda <= 0:
+            raise ValueError("min_t_lambda must be positive")
+        if self.max_t_lambda <= 0:
+            raise ValueError("max_t_lambda must be positive")
         if self.min_t_lambda > self.max_t_lambda:
             raise ValueError("min_t_lambda must be <= max_t_lambda")
         if self.condition_dim < 2:

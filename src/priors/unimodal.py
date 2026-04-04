@@ -38,6 +38,7 @@ class UnimodalGaussianPriorConfig(BasePriorConfig):
 
     def analytic_score(
         self,
+        *,
         y_t: Float[Tensor, "batch ..."],
         t: Float[Tensor, "batch"],
     ) -> Float[Tensor, "batch ..."]:
