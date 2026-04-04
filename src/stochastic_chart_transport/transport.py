@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
+from einops import einsum
 from jaxtyping import Float
 from torch import Tensor
 
@@ -38,7 +40,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
         bin_starts = bin_edges[:-1]
         bin_widths = bin_edges[1:] - bin_edges[:-1]
         return bin_starts.unsqueeze(0) + bin_widths.unsqueeze(0) * torch.rand(
-            batch_size, transport_config.num_time_samples, device=device, dtype=dtype
+            batch_size, self.num_time_samples, device=device, dtype=dtype
         )
 
     @dataclass
@@ -77,7 +79,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
             for j in range(self.num_time_samples):
                 t = noise_t[:, j]
 
-                epsilon = state.critic_config.epsilon_like(combined_latent)
+                epsilon = state.critic_config.epsilon_like(latent=combined_latent)
                 noised_latent = state.critic_config.apply_mixture(
                     latent=combined_latent, epsilon=epsilon, t=t
                 )
@@ -103,16 +105,20 @@ class StochasticChartTransportLossConfig(BaseConfig):
 
                 # (1) Weighting to obtain score stimates
                 # (2) pullback along the noise process
-                latent_score_estimates = noise_estimates * (-1.0 / t)
-                noise_level_tranport_field = (
-                    analytic_prior_scores - latent_score_estimates
-                ) * (1.0 - t)
+                latent_score_estimates = einsum(
+                    -1.0 / t, noise_estimates, "b, b ... -> b ..."
+                )
+                noise_level_tranport_field = einsum(
+                    1.0 - t,
+                    analytic_prior_scores - latent_score_estimates,
+                    "b, b ... -> b ...",
+                )
                 # (1) Bulk-KL weighting of the Wasserstein transport objective
                 #   1 / (1-t)**2 corresponds to the uniform-velocity FM weight
                 # (2) Average across the time samples
                 noise_level_weights: Float[Tensor, "b"] = (1.0 - t).pow(
                     -2.0
-                ) / num_time_samples
+                ) / self.num_time_samples
                 combined_transport_field.add_(
                     einsum(
                         noise_level_tranport_field,
@@ -151,14 +157,17 @@ class StochasticChartTransportLossConfig(BaseConfig):
             max_norm=self.transport_step_cap,
         )
         combined_transported_latent = (
-            torch.cat([data_sample, model_sample]) + combined_transport_field
+            torch.cat([data_latent, model_latent]) + combined_transport_field
         ).detach()
         combined_sample = torch.cat([data_sample, model_sample])
         combined_fiber = torch.cat([data_fiber, model_fiber])
-
+        # We only supervise the data component, not the fiber component
+        reconstructed_combined_sample, _ = state.fiber_packing.unpack(
+            state.model.decoder(combined_transported_latent)
+        )
         decoder_loss = (
             F.huber_loss(
-                state.model.decoder(combined_transported_latent),
+                reconstructed_combined_sample,
                 combined_sample,
                 delta=self.decoder_huber_delta,
                 reduction="mean",
@@ -172,7 +181,6 @@ class StochasticChartTransportLossConfig(BaseConfig):
                     state.fiber_packing.pack(combined_sample, combined_fiber)
                 ),
                 combined_transported_latent,
-                delta=self.encoder_huber_delta,
                 reduction="mean",
             )
             * self.encoder_transport_weight

@@ -1,1 +1,3 @@
-__all__ = ["chart_transport", "data", "monitoring"]
+from src.data.mnist.data import MNISTDataConfig
+
+__all__ = ["MNISTDataConfig"]
