@@ -23,11 +23,13 @@ class StochasticChartTransportLossConfig(BaseConfig):
     """
     t_range: tuple[float, float]
     antipodal_estimate: bool
-    decoder_transport_weight: float
-    encoder_transport_weight: float
-    data_transport_weight: float
-    model_transport_weight: float
+    """
+    Loss weighting & components
+    """
     decoder_huber_delta: float
+    forward_kl_weight: float
+    reverse_kl_weight: float
+    data_decoder_weight_multiplier: float  # Applied on top
 
     def _sample_stratified_transport_times(
         self, *, batch_size: int, device: torch.device, dtype: torch.dtype
@@ -47,74 +49,63 @@ class StochasticChartTransportLossConfig(BaseConfig):
 
     @dataclass
     class Loss(BaseLoss):
-        decoder_data: Float[Tensor, ""]
-        encoder_data: Float[Tensor, ""]
-        encoder_model: Float[Tensor, ""]
+        data_decoder: Float[Tensor, ""]
+        data_encoder: Float[Tensor, ""]
+        latent: Float[Tensor, ""]
+
+        forward_kl_weight: float
+        reverse_kl_weight: float
+        data_decoder_weight_multiplier: float
 
         def sum(self):
-            return self.encoder_data + self.encoder_model + self.decoder_data
+            return (
+                self.forward_kl_weight
+                * (
+                    self.data_encoder
+                    + self.data_decoder_weight_multiplier * self.data_decoder
+                )
+                + self.reverse_kl_weight * self.latent
+            )
 
-    def _estimate_transport_field(
+    def _estimate_average_score(
         self,
         state,
         *,
-        data_latent: Float[Tensor, "batch ..."],
-        model_latent: Float[Tensor, "batch ..."],
-    ) -> Float[Tensor, "double_batch ..."]:
+        latent: Float[Tensor, "batch ..."],
+        categorical: Float[Tensor, "batch ..."],
+    ) -> Float[Tensor, "batch ..."]:
         """
-        Returns weighted score estimate under the critic
+        Given latent coordinates, estimates their scores at the given point
+            using specified critic categorical
         """
-        batch_size = data_latent.shape[0]
-        device = data_latent.device
+        batch_size = latent.shape[0]
+        device = latent.device
 
         noise_t: Float[Tensor, "b t"] = self._sample_stratified_transport_times(
-            batch_size=batch_size, device=device, dtype=data_latent.dtype
+            batch_size=batch_size, device=device, dtype=latent.dtype
         )
-        noise_t = torch.cat([noise_t, noise_t])
-        combined_latent = torch.cat([data_latent, model_latent])
-        combined_transport_field = torch.zeros_like(combined_latent)
-        combined_categorical = torch.zeros(
-            (2 * batch_size,), dtype=torch.long, device=device
-        )
-        combined_categorical[batch_size:] = 1
-        # Estimate the transport field
+        weighted_score_field = torch.zeros_like(latent)
         with torch.no_grad():
             for j in range(self.num_time_samples):
                 t = noise_t[:, j]
-
-                epsilon = state.config.critic.epsilon_like(latent=combined_latent)
+                epsilon = state.config.critic.epsilon_like(latent=latent)
                 noised_latent = state.config.critic.apply_mixture(
-                    latent=combined_latent, epsilon=epsilon, t=t
+                    latent=latent, epsilon=epsilon, t=t
                 )
                 # The actual score is -1.0 * noise_estimates / t
                 noise_estimates = state.model.critic(
-                    noised_latent, t=t, categorical=combined_categorical
-                )
-                analytic_prior_scores = state.prior_config.analytic_score(
-                    y_t=noised_latent, t=t
+                    noised_latent, t=t, categorical=categorical
                 )
                 if self.antipodal_estimate:
                     antipodal_noised_latent = state.config.critic.apply_mixture(
-                        latent=combined_latent, epsilon=-epsilon, t=t
+                        latent=latent, epsilon=-epsilon, t=t
                     )
                     antipodal_noise_estimates = state.model.critic(
-                        antipodal_noised_latent, t=t, categorical=combined_categorical
-                    )
-                    antipodal_prior_scores = state.prior_config.analytic_score(
-                        y_t=antipodal_noised_latent, t=t
+                        antipodal_noised_latent, t=t, categorical=categorical
                     )
                     noise_estimates.add_(antipodal_noise_estimates).div_(2.0)
-                    analytic_prior_scores.add_(antipodal_prior_scores).div_(2.0)
-
-                # (1) Weighting to obtain score stimates
-                # (2) pullback along the noise process
                 latent_score_estimates = einsum(
                     -1.0 / t, noise_estimates, "b, b ... -> b ..."
-                )
-                noise_level_tranport_field = einsum(
-                    1.0 - t,
-                    analytic_prior_scores - latent_score_estimates,
-                    "b, b ... -> b ...",
                 )
                 # (1) Bulk-KL weighting of the Wasserstein transport objective
                 #   1 / (1-t)**2 corresponds to the uniform-velocity FM weight
@@ -122,14 +113,52 @@ class StochasticChartTransportLossConfig(BaseConfig):
                 noise_level_weights: Float[Tensor, "b"] = (1.0 - t).pow(
                     -2.0
                 ) / self.num_time_samples
-                combined_transport_field.add_(
+                weighted_score_field.add_(
                     einsum(
-                        noise_level_tranport_field,
-                        noise_level_weights,
-                        "b ..., b -> b ...",
+                        latent_score_estimates, noise_level_weights, "b ..., b -> b ..."
                     )
                 )
-        return combined_transport_field
+        return weighted_score_field
+
+    def _estimate_transport_fields(
+        self,
+        state,
+        *,
+        data_latent: Float[Tensor, "batch ..."],
+        model_latent: Float[Tensor, "batch ..."],
+    ) -> tuple[Float[Tensor, "batch ..."], Float[Tensor, "batch ..."]]:
+        """
+        Returns the non scaled-clipped transport field for each of data and model
+        """
+        combined_categorical = torch.zeros(
+            (data_latent.shape[0] + model_latent.shape[0],),
+            device=data_latent.device,
+            dtype=torch.long,
+        )
+        combined_categorical[-model_latent.shape[0] :] = 1
+
+        # Data-latent scores
+        data_latent_data_score, data_latent_model_score = self._estimate_average_score(
+            state,
+            latent=torch.cat([data_latent, data_latent]),
+            categorical=combined_categorical,
+        ).chunk(2, dim=0)
+        # Model-latent scores
+        model_latent_data_score, model_latent_model_score = (
+            self._estimate_average_score(
+                state,
+                latent=torch.cat([model_latent, model_latent]),
+                categorical=combined_categorical,
+            ).chunk(2, dim=0)
+        )
+
+        # Data latents should drift toward model latents
+        data_latent_transport_field = data_latent_model_score - data_latent_data_score
+        # Model latents should drift toward data latents
+        model_latent_transport_field = (
+            model_latent_data_score - model_latent_model_score
+        )
+        return data_latent_transport_field, model_latent_transport_field
 
     def _scale_clip_transport_field(
         self, field: Float[Tensor, "b ..."]
@@ -146,72 +175,45 @@ class StochasticChartTransportLossConfig(BaseConfig):
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> Loss:
-        """
-        Transport supervision reusing caller-provided current-step tensors.
-
-        Caller contract:
-        1. `data_latent` and `model_latent` must be fresh current-step latents
-           with encoder gradients attached if `encoder_loss` should train the
-           encoder.
-        2. The transport field and transported latent target are always treated
-           as detached targets.
-        3. `decoder_data_loss` is the only active decoder-side transport term:
-           data samples provide a fixed sample-space anchor.
-        4. `encoder_model_loss` is the model-side transport term. Its
-           `model_latent` input may depend on attached decoded samples so this
-           loss can update both encoder and decoder through stochastic
-           re-encoding.
-        """
         # Rescale and clip
-        combined_transport_field: Float[Tensor, "b ..."] = (
-            self._scale_clip_transport_field(
-                self._estimate_transport_field(
-                    state,
-                    data_latent=data_latent.detach(),
-                    model_latent=model_latent.detach(),
-                )
+        data_latent_transport_field, model_latent_transport_field = (
+            self._estimate_transport_fields(
+                state, data_latent=data_latent, model_latent=model_latent
             )
         )
         transported_data_latent, transported_model_latent = (
-            (torch.cat([data_latent, model_latent]) + combined_transport_field)
-            .detach()
+            (
+                torch.cat([data_latent, model_latent])
+                + self._scale_clip_transport_field(
+                    torch.cat(
+                        [data_latent_transport_field, model_latent_transport_field]
+                    )
+                )
+            )
             .chunk(2, dim=0)
+            .detach()
         )
-        # Decoder-side transport is only used on the data branch, where the
-        # observed sample provides a fixed anchor in sample space.
-        reconstructed_data_sample, _ = state.decode(transported_data_latent)
 
-        decoder_data_loss = (
-            F.huber_loss(
-                reconstructed_data_sample,
-                data_sample.detach(),
-                delta=self.decoder_huber_delta,
-                reduction="mean",
-            )
-            * self.decoder_transport_weight
-            * self.data_transport_weight
+        # Data-side: attract towards model latents.
+        #    Separately update encoder and decoder
+        data_encoder_loss = F.mse_loss(
+            data_latent, transported_data_latent.detach(), reduction="mean"
         )
-        # Transport step cap is responsible for well-conditioning the mse target
-        encoder_data_loss = (
-            F.mse_loss(
-                data_latent,
-                transported_data_latent,
-                reduction="mean",
-            )
-            * self.encoder_transport_weight
-            * self.data_transport_weight
+        data_decoder_loss = F.huber_loss(
+            model_latent,
+            transported_model_latent.detach(),
+            reduction="mean",
+            delta=self.decoder_huber_delta,
         )
-        encoder_model_loss = (
-            F.mse_loss(
-                model_latent,
-                transported_model_latent,
-                reduction="mean",
-            )
-            * self.encoder_transport_weight
-            * self.model_transport_weight
+        # Model-side: one loss updates both the encoder and decoder
+        model_loss = F.mse_loss(
+            model_latent, transported_model_latent.detach(), reduction="mean"
         )
         return self.Loss(
-            encoder_data=encoder_data_loss,
-            encoder_model=encoder_model_loss,
-            decoder_data=decoder_data_loss,
+            data_encoder=data_encoder_loss,
+            data_decoder=data_decoder_loss,
+            latent=model_loss,
+            forward_kl_weight=self.forward_kl_weight,
+            reverse_kl_weight=self.reverse_kl_weight,
+            data_decoder_weight_multiplier=self.data_decoder_weight_multiplier,
         )

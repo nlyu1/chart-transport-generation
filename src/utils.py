@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 from jaxtyping import Float
 from torch import Tensor
@@ -18,11 +20,5 @@ def clip_norm(
 def dict_to_cpu(tensor_dict: dict[Any, Tensor]) -> dict[Any, Tensor]:
     result = {}
     for k, v in tensor_dict.items():
-        if not v.is_cuda:
-            result[k] = v
-            continue
-        buf = torch.empty(v.shape, dtype=v.dtype, pin_memory=True)
-        buf.copy_(v.detach(), non_blocking=True)
-        result[k] = buf
-    torch.cuda.synchronize()
+        result[k] = v.detach().to(device="cpu", copy=True)
     return result

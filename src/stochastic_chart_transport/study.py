@@ -10,12 +10,13 @@ from src.common.training import BaseLoss
 from src.config.base import BaseConfig
 from src.data.base import BaseDataConfig
 from src.priors.base import BasePriorConfig
+from src.stochastic_chart_transport.constraint import (
+    ChartPretrainConfig,
+    IntegratedChartConstraintConfig,
+)
 from src.stochastic_chart_transport.critic import CriticLossConfig
 from src.stochastic_chart_transport.fibers import FiberPacking
 from src.stochastic_chart_transport.model import ChartTransportModelConfig
-from src.stochastic_chart_transport.reconstruction import (
-    ChartPretrainConfig,
-)
 from src.stochastic_chart_transport.transport import (
     StochasticChartTransportLossConfig,
 )
@@ -31,6 +32,7 @@ class StochasticChartTransportStudyConfig(BaseConfig):
     pretrain: ChartPretrainConfig
     critic: CriticLossConfig
     transport: StochasticChartTransportLossConfig
+    integrated_constraint: IntegratedChartConstraintConfig
 
 
 class StochasticChartTransportStudyState(BaseConfig):
@@ -56,28 +58,6 @@ class StochasticChartTransportStudyState(BaseConfig):
             op=op,
             fiber_packing=config.fiber_packing,
             device=device,
-        )
-
-    def get_constraint_loss(
-        self,
-        *,
-        data: Float[Tensor, "batch ..."],
-        data_fiber: Float[Tensor, "batch ..."],
-        data_latent: Float[Tensor, "batch ..."],
-        model_sample: Float[Tensor, "batch ..."],
-        model_fiber: Float[Tensor, "batch ..."],
-        prior: Float[Tensor, "batch ..."],
-        compute_anchor_loss: bool,
-    ) -> ChartPretrainConfig.Loss:
-        return self.config.pretrain.apply(
-            state=self,
-            data=data,
-            data_fiber=data_fiber,
-            data_latent=data_latent,
-            model_sample=model_sample,
-            model_fiber=model_fiber,
-            prior=prior,
-            compute_anchor_loss=compute_anchor_loss,
         )
 
     def get_critic_loss(
@@ -106,25 +86,10 @@ class StochasticChartTransportStudyState(BaseConfig):
             model_latent=model_latent,
         )
 
-    def compute_chart_only_loss(
-        self, data: Float[Tensor, "batch ..."], compute_anchor_loss: bool
+    def compute_chart_pretrain_loss(
+        self, data: Float[Tensor, "batch ..."]
     ) -> ChartPretrainConfig.Loss:
-        batch_size = data.shape[0]
-        prior = self.prior_config.sample(batch_size=batch_size).type_as(data)
-
-        data_fiber = self.get_fiber(batch_size=batch_size).type_as(data)
-
-        data_latent = self.encode(data=data, fiber=data_fiber)
-        model_sample, model_fiber = self.decode(prior)
-        return self.get_constraint_loss(
-            data=data,
-            data_fiber=data_fiber,
-            data_latent=data_latent,
-            model_sample=model_sample,
-            model_fiber=model_fiber,
-            prior=prior,
-            compute_anchor_loss=compute_anchor_loss,
-        )
+        return self.config.pretrain.apply(self, data=data)
 
     def compute_critic_only_loss(
         self, data: Float[Tensor, "batch ..."]
@@ -142,13 +107,13 @@ class StochasticChartTransportStudyState(BaseConfig):
 
     @dataclass
     class IntegratedLoss(BaseLoss):
-        chart_loss: ChartPretrainConfig.Loss
+        constraint_loss: IntegratedChartConstraintConfig.Loss
         critic_loss: CriticLossConfig.Loss
         transport_loss: StochasticChartTransportLossConfig.Loss | None
 
         def sum(self):
             return (
-                self.chart_loss.sum()
+                self.constraint_loss.sum()
                 + self.critic_loss.sum()
                 + (self.transport_loss.sum() if self.transport_loss else 0.0)
             )
@@ -194,15 +159,8 @@ class StochasticChartTransportStudyState(BaseConfig):
         ).chunk(2, dim=0)
 
         # Compute losses
-        chart_loss = self.get_constraint_loss(
-            data=data,
-            data_fiber=data_fiber,
-            data_latent=data_latent,
-            model_sample=model_sample,
-            # Note that we're not providing a fresh fiber here!
-            model_fiber=model_decoded_fiber,
-            prior=prior,
-            compute_anchor_loss=False,
+        constraint_loss = self.config.integrated_constraint.apply(
+            self, data=data, data_latent=data_latent, model_latent=model_latent
         )
 
         critic_loss = self.get_critic_loss(
@@ -217,7 +175,7 @@ class StochasticChartTransportStudyState(BaseConfig):
                 model_latent=model_latent,
             )
         return self.IntegratedLoss(
-            chart_loss=chart_loss,
+            constraint_loss=constraint_loss,
             critic_loss=critic_loss,
             transport_loss=transport_loss,
         )
