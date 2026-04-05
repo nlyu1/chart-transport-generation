@@ -168,9 +168,10 @@ class StochasticChartTransportStudyState(BaseConfig):
            prior-roundtrip continues to train the decoder through both sample
            and fiber outputs.
         2. `critic_loss` must see detached latents.
-        3. `transport_loss.encoder` must *not* backpropagate into the decoder
-           through the model branch. We therefore reuse a detached copy of the
-           decoded model sample only for the shared latent-estimation path.
+        3. The transport encoder-side supervision must *not* backpropagate into
+           the decoder through the model branch. We therefore reuse a detached
+           copy of the decoded model sample only for the shared
+           latent-estimation path.
         """
         batch_size = data.shape[0]
         # Model-independent sampling quantities

@@ -25,6 +25,8 @@ class StochasticChartTransportLossConfig(BaseConfig):
     antipodal_estimate: bool
     decoder_transport_weight: float
     encoder_transport_weight: float
+    data_transport_weight: float
+    model_transport_weight: float
     decoder_huber_delta: float
 
     def _sample_stratified_transport_times(
@@ -45,11 +47,18 @@ class StochasticChartTransportLossConfig(BaseConfig):
 
     @dataclass
     class Loss(BaseLoss):
-        decoder: Float[Tensor, ""]
-        encoder: Float[Tensor, ""]
+        decoder_data: Float[Tensor, ""]
+        decoder_model: Float[Tensor, ""]
+        encoder_data: Float[Tensor, ""]
+        encoder_model: Float[Tensor, ""]
 
         def sum(self):
-            return self.decoder + self.encoder
+            return (
+                self.encoder_data
+                + self.encoder_model
+                + self.decoder_data
+                + self.decoder_model
+            )
 
     def _estimate_transport_field(
         self,
@@ -128,6 +137,13 @@ class StochasticChartTransportLossConfig(BaseConfig):
                 )
         return combined_transport_field
 
+    def _scale_clip_transport_field(
+        self, field: Float[Tensor, "b ..."]
+    ) -> Float[Tensor, "b ..."]:
+        return clip_norm(
+            field * self.transport_step_multiplier, max_norm=self.transport_step_cap
+        )
+
     def apply(
         self,
         state,
@@ -150,37 +166,70 @@ class StochasticChartTransportLossConfig(BaseConfig):
            detached by the caller without changing transport decoder semantics.
         """
         # Rescale and clip
-        combined_transport_field: Float[Tensor, "b ..."] = clip_norm(
-            self._estimate_transport_field(
-                state,
-                data_latent=data_latent.detach(),
-                model_latent=model_latent.detach(),
+        combined_transport_field: Float[Tensor, "b ..."] = (
+            self._scale_clip_transport_field(
+                self._estimate_transport_field(
+                    state,
+                    data_latent=data_latent.detach(),
+                    model_latent=model_latent.detach(),
+                )
             )
-            * self.transport_step_multiplier,
-            max_norm=self.transport_step_cap,
         )
-        combined_transported_latent = (
-            torch.cat([data_latent, model_latent]) + combined_transport_field
-        ).detach()
-        combined_sample = torch.cat([data_sample, model_sample])
+        transported_data_latent, transported_model_latent = (
+            (torch.cat([data_latent, model_latent]) + combined_transport_field)
+            .detach()
+            .chunk(2, dim=0)
+        )
         # We only supervise the data component, not the fiber component
-        reconstructed_combined_sample, _ = state.decode(combined_transported_latent)
-        decoder_loss = (
+        reconstructed_combined_sample, _ = state.decode(
+            torch.cat([transported_data_latent, transported_model_latent], dim=0)
+        )
+        reconstructed_data_sample, reconstructed_model_sample = (
+            reconstructed_combined_sample.chunk(2, dim=0)
+        )
+
+        decoder_data_loss = (
             F.huber_loss(
-                reconstructed_combined_sample,
-                combined_sample.detach(),
+                reconstructed_data_sample,
+                data_sample.detach(),
                 delta=self.decoder_huber_delta,
                 reduction="mean",
             )
             * self.decoder_transport_weight
+            * self.data_transport_weight
+        )
+        decoder_model_loss = (
+            F.huber_loss(
+                reconstructed_model_sample,
+                model_sample.detach(),
+                delta=self.decoder_huber_delta,
+                reduction="mean",
+            )
+            * self.decoder_transport_weight
+            * self.model_transport_weight
         )
         # Transport step cap is responsible for well-conditioning the mse target
-        encoder_loss = (
+        encoder_data_loss = (
             F.mse_loss(
-                torch.cat([data_latent, model_latent]),
-                combined_transported_latent,
+                data_latent,
+                transported_data_latent,
                 reduction="mean",
             )
             * self.encoder_transport_weight
+            * self.data_transport_weight
         )
-        return self.Loss(encoder=encoder_loss, decoder=decoder_loss)
+        encoder_model_loss = (
+            F.mse_loss(
+                model_latent,
+                transported_model_latent,
+                reduction="mean",
+            )
+            * self.encoder_transport_weight
+            * self.model_transport_weight
+        )
+        return self.Loss(
+            encoder_data=encoder_data_loss,
+            encoder_model=encoder_model_loss,
+            decoder_data=decoder_data_loss,
+            decoder_model=decoder_model_loss,
+        )
