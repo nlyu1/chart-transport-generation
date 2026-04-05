@@ -96,14 +96,12 @@ class StochasticChartTransportStudyState(BaseConfig):
         self,
         *,
         data_sample: Float[Tensor, "batch ..."],
-        model_sample: Float[Tensor, "batch ..."],
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> StochasticChartTransportLossConfig.Loss:
         return self.config.transport.apply(
             self,
             data_sample=data_sample,
-            model_sample=model_sample,
             data_latent=data_latent,
             model_latent=model_latent,
         )
@@ -168,10 +166,11 @@ class StochasticChartTransportStudyState(BaseConfig):
            prior-roundtrip continues to train the decoder through both sample
            and fiber outputs.
         2. `critic_loss` must see detached latents.
-        3. The transport encoder-side supervision must *not* backpropagate into
-           the decoder through the model branch. We therefore reuse a detached
-           copy of the decoded model sample only for the shared
-           latent-estimation path.
+        3. Data-side transport is sample-anchored: `decoder_data_loss`
+           compares transported data latents against the fixed observed batch.
+        4. Model-side transport is latent-only: `encoder_model_loss` acts on
+           stochastic re-encodings of model samples, and those gradients must
+           flow through both the encoder and decoder.
         """
         batch_size = data.shape[0]
         # Model-independent sampling quantities
@@ -181,16 +180,14 @@ class StochasticChartTransportStudyState(BaseConfig):
         combined_fiber = self.get_fiber(batch_size=batch_size * 2).type_as(data)
         data_fiber, _ = combined_fiber.chunk(2, dim=0)
 
-        # Decode once. The attached tensors feed the chart constraint path.
+        # Decode once. The attached tensors feed both the chart constraint path
+        # and the model-side stochastic latent transport path.
         model_sample, model_decoded_fiber = self.decode(prior)
-        # Only the latent-estimation path should ignore decoder gradients from
-        # the model branch. Keep `model_sample` itself attached for chart loss.
-        model_sample_for_latent = model_sample.detach()
 
-        # Reuse one encoder pass for data and model latents. The model half uses
-        # the detached sample copy so transport encoder supervision only trains
-        # the encoder, not the decoder.
-        combined_sample = torch.cat([data, model_sample_for_latent], dim=0)
+        # Reuse one encoder pass for data and model latents.
+        # Keep the model sample attached: model-side latent transport should
+        # update both encoder and decoder through re-encoding.
+        combined_sample = torch.cat([data, model_sample], dim=0)
         data_latent, model_latent = self.encode(
             data=combined_sample,
             fiber=combined_fiber,
@@ -216,7 +213,6 @@ class StochasticChartTransportStudyState(BaseConfig):
         if compute_transport_loss:
             transport_loss = self.get_transport_loss(
                 data_sample=data,
-                model_sample=model_sample,
                 data_latent=data_latent,
                 model_latent=model_latent,
             )

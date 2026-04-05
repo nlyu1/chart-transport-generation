@@ -48,17 +48,11 @@ class StochasticChartTransportLossConfig(BaseConfig):
     @dataclass
     class Loss(BaseLoss):
         decoder_data: Float[Tensor, ""]
-        decoder_model: Float[Tensor, ""]
         encoder_data: Float[Tensor, ""]
         encoder_model: Float[Tensor, ""]
 
         def sum(self):
-            return (
-                self.encoder_data
-                + self.encoder_model
-                + self.decoder_data
-                + self.decoder_model
-            )
+            return self.encoder_data + self.encoder_model + self.decoder_data
 
     def _estimate_transport_field(
         self,
@@ -149,7 +143,6 @@ class StochasticChartTransportLossConfig(BaseConfig):
         state,
         *,
         data_sample: Float[Tensor, "batch ..."],
-        model_sample: Float[Tensor, "batch ..."],
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> Loss:
@@ -162,8 +155,12 @@ class StochasticChartTransportLossConfig(BaseConfig):
            encoder.
         2. The transport field and transported latent target are always treated
            as detached targets.
-        3. `model_sample` is only a decoder-loss target here; its value may be
-           detached by the caller without changing transport decoder semantics.
+        3. `decoder_data_loss` is the only active decoder-side transport term:
+           data samples provide a fixed sample-space anchor.
+        4. `encoder_model_loss` is the model-side transport term. Its
+           `model_latent` input may depend on attached decoded samples so this
+           loss can update both encoder and decoder through stochastic
+           re-encoding.
         """
         # Rescale and clip
         combined_transport_field: Float[Tensor, "b ..."] = (
@@ -180,13 +177,9 @@ class StochasticChartTransportLossConfig(BaseConfig):
             .detach()
             .chunk(2, dim=0)
         )
-        # We only supervise the data component, not the fiber component
-        reconstructed_combined_sample, _ = state.decode(
-            torch.cat([transported_data_latent, transported_model_latent], dim=0)
-        )
-        reconstructed_data_sample, reconstructed_model_sample = (
-            reconstructed_combined_sample.chunk(2, dim=0)
-        )
+        # Decoder-side transport is only used on the data branch, where the
+        # observed sample provides a fixed anchor in sample space.
+        reconstructed_data_sample, _ = state.decode(transported_data_latent)
 
         decoder_data_loss = (
             F.huber_loss(
@@ -197,16 +190,6 @@ class StochasticChartTransportLossConfig(BaseConfig):
             )
             * self.decoder_transport_weight
             * self.data_transport_weight
-        )
-        decoder_model_loss = (
-            F.huber_loss(
-                reconstructed_model_sample,
-                model_sample.detach(),
-                delta=self.decoder_huber_delta,
-                reduction="mean",
-            )
-            * self.decoder_transport_weight
-            * self.model_transport_weight
         )
         # Transport step cap is responsible for well-conditioning the mse target
         encoder_data_loss = (
@@ -231,5 +214,4 @@ class StochasticChartTransportLossConfig(BaseConfig):
             encoder_data=encoder_data_loss,
             encoder_model=encoder_model_loss,
             decoder_data=decoder_data_loss,
-            decoder_model=decoder_model_loss,
         )
