@@ -73,7 +73,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
         *,
         latent: Float[Tensor, "batch ..."],
         categorical: Float[Tensor, "batch ..."],
-    ) -> Float[Tensor, "batch ..."]:
+    ) -> tuple[Float[Tensor, "batch ..."], Float[Tensor, "batch ..."]]:
         """
         Given latent coordinates, estimates their scores at the given point
             using specified critic categorical
@@ -85,6 +85,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
             batch_size=batch_size, device=device, dtype=latent.dtype
         )
         weighted_score_field = torch.zeros_like(latent)
+        weighted_prior_score_field = torch.zeros_like(latent)
         with torch.no_grad():
             for j in range(self.num_time_samples):
                 t = noise_t[:, j]
@@ -107,6 +108,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
                 latent_score_estimates = einsum(
                     -1.0 / t, noise_estimates, "b, b ... -> b ..."
                 )
+                latent_prior_score = state.prior_config.analytic_score(y_t=latent, t=t)
                 # (1) Bulk-KL weighting of the Wasserstein transport objective
                 #   1 / (1-t)**2 corresponds to the uniform-velocity FM weight
                 #   we multiply another (1.0 - t) to account for pullback
@@ -119,7 +121,12 @@ class StochasticChartTransportLossConfig(BaseConfig):
                         latent_score_estimates, noise_level_weights, "b ..., b -> b ..."
                     )
                 )
-        return weighted_score_field
+                weighted_prior_score_field.add_(
+                    einsum(
+                        latent_prior_score, noise_level_weights, "b ..., b -> b ..."
+                    )
+                )
+        return weighted_score_field, weighted_prior_score_field
 
     def _estimate_transport_fields(
         self,
@@ -139,25 +146,26 @@ class StochasticChartTransportLossConfig(BaseConfig):
         combined_categorical[-model_latent.shape[0] :] = 1
 
         # Data-latent scores
-        data_latent_data_score, data_latent_model_score = self._estimate_average_score(
+        data_latent_score, data_latent_prior_score = self._estimate_average_score(
             state,
             latent=torch.cat([data_latent, data_latent]),
             categorical=combined_categorical,
-        ).chunk(2, dim=0)
-        # Model-latent scores
-        model_latent_data_score, model_latent_model_score = (
-            self._estimate_average_score(
-                state,
-                latent=torch.cat([model_latent, model_latent]),
-                categorical=combined_categorical,
-            ).chunk(2, dim=0)
         )
+        data_latent_data_score, _ = data_latent_score.chunk(2, dim=0)
+        data_latent_prior_score, _ = data_latent_prior_score.chunk(2, dim=0)
+        # Model-latent scores
+        model_latent_score, model_latent_prior_score = self._estimate_average_score(
+            state,
+            latent=torch.cat([model_latent, model_latent]),
+            categorical=combined_categorical,
+        )
+        _, model_latent_model_score = model_latent_score.chunk(2, dim=0)
+        _, model_latent_prior_score = model_latent_prior_score.chunk(2, dim=0)
 
-        # Data latents should drift toward model latents
-        data_latent_transport_field = data_latent_model_score - data_latent_data_score
-        # Model latents should drift toward data latents
+        # Anchor both branches to the prior instead of each other.
+        data_latent_transport_field = data_latent_prior_score - data_latent_data_score
         model_latent_transport_field = (
-            model_latent_data_score - model_latent_model_score
+            model_latent_prior_score - model_latent_model_score
         )
         return data_latent_transport_field, model_latent_transport_field
 
@@ -167,6 +175,17 @@ class StochasticChartTransportLossConfig(BaseConfig):
         return clip_norm(
             field * self.transport_step_multiplier, max_norm=self.transport_step_cap
         )
+
+    def _latent_transport_loss(
+        self,
+        *,
+        latent: Float[Tensor, "batch ..."],
+        transported_latent: Float[Tensor, "batch ..."],
+    ) -> Float[Tensor, ""]:
+        per_sample_squared_error = (
+            latent - transported_latent.detach()
+        ).reshape(latent.shape[0], -1).square().sum(dim=1)
+        return per_sample_squared_error.mean()
 
     def apply(
         self,
@@ -197,8 +216,9 @@ class StochasticChartTransportLossConfig(BaseConfig):
 
         # Data-side: attract towards model latents.
         #    Separately update encoder and decoder
-        data_encoder_loss = F.mse_loss(
-            data_latent, transported_data_latent.detach(), reduction="mean"
+        data_encoder_loss = self._latent_transport_loss(
+            latent=data_latent,
+            transported_latent=transported_data_latent,
         )
         data_decoder_loss = F.huber_loss(
             state.decode(transported_data_latent.detach())[0],
@@ -207,8 +227,9 @@ class StochasticChartTransportLossConfig(BaseConfig):
             delta=self.decoder_huber_delta,
         )
         # Model-side: one loss updates both the encoder and decoder
-        model_loss = F.mse_loss(
-            model_latent, transported_model_latent.detach(), reduction="mean"
+        model_loss = self._latent_transport_loss(
+            latent=model_latent,
+            transported_latent=transported_model_latent,
         )
         return self.Loss(
             data_encoder=data_encoder_loss,
