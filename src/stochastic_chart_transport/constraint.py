@@ -39,11 +39,52 @@ class ReconstructionConfig(BaseConfig):
         )
 
 
-class LatentAnchorConfig(BaseConfig):
+class LatentScaleAnchorConfig(BaseConfig):
     """
-    Penalizes the energy of a given latent representation
+    Anchors each latent coordinate's uncentered second moment about the origin.
+
+    This penalizes deviation of each coordinate's ``E[z_i^2]`` from
+    ``target_norm_per_dimension^2``. Setting
+    ``target_norm_per_dimension=1.0`` matches the per-dimension second moment
+    of a standard Gaussian ``N(0, I_d)``.
     """
 
+    latent_norm_weight: float
+    latent_zero_mean_weight: float
+    target_norm_per_dimension: float
+
+    @dataclass
+    class Loss(BaseLoss):
+        latent_norm: Float[Tensor, ""]
+        latent_zero_mean: Float[Tensor, ""]
+        latent_norm_weight: float
+        latent_zero_mean_weight: float
+
+        def sum(self):
+            return (
+                self.latent_norm * self.latent_norm_weight
+                + self.latent_zero_mean * self.latent_zero_mean_weight
+            )
+
+    def apply(
+        self,
+        *,
+        latent: Float[Tensor, "batch ..."],
+    ) -> Loss:
+        flat_latent = latent.reshape(latent.shape[0], -1)
+        per_dimension_second_moment = flat_latent.pow(2).mean(dim=0)
+        mean_penalty = flat_latent.mean(dim=0).pow(2).mean()
+        return self.Loss(
+            latent_norm=(
+                per_dimension_second_moment - self.target_norm_per_dimension**2
+            ).pow(2).mean(),
+            latent_zero_mean=mean_penalty,
+            latent_norm_weight=self.latent_norm_weight,
+            latent_zero_mean_weight=self.latent_zero_mean_weight,
+        )
+
+
+class LatentNormAnchorConfig(BaseConfig):
     latent_norm_weight: float
 
     @dataclass
@@ -60,24 +101,28 @@ class LatentAnchorConfig(BaseConfig):
         latent: Float[Tensor, "batch ..."],
     ) -> Loss:
         return self.Loss(
-            latent_norm=latent.pow(2).mean(), weight=self.latent_norm_weight
+            latent_norm=latent.pow(2).mean(),
+            weight=self.latent_norm_weight,
         )
 
 
 class IntegratedChartConstraintConfig(BaseConfig):
     data_reconstruction: ReconstructionConfig
-    data_latent_anchor: LatentAnchorConfig
-    model_latent_anchor: LatentAnchorConfig
+    model_reconstruction: ReconstructionConfig
+    data_latent_anchor: LatentScaleAnchorConfig
+    model_latent_anchor: LatentScaleAnchorConfig
 
     @dataclass
     class Loss(BaseLoss):
         data_reconstruction: ReconstructionConfig.Loss
-        data_latent_anchor: LatentAnchorConfig.Loss
-        model_latent_anchor: LatentAnchorConfig.Loss
+        model_reconstruction: ReconstructionConfig.Loss
+        data_latent_anchor: LatentScaleAnchorConfig.Loss
+        model_latent_anchor: LatentScaleAnchorConfig.Loss
 
         def sum(self):
             return (
                 self.data_reconstruction.sum()
+                + self.model_reconstruction.sum()
                 + self.data_latent_anchor.sum()
                 + self.model_latent_anchor.sum()
             )
@@ -87,20 +132,28 @@ class IntegratedChartConstraintConfig(BaseConfig):
         state: ChartTransportStudyState,
         *,
         data: Float[Tensor, "batch ..."],
+        model_sample: Float[Tensor, "batch ..."],
         data_latent: Float[Tensor, "batch ..."],
         model_latent: Float[Tensor, "batch ..."],
     ) -> IntegratedChartConstraintConfig.Loss:
-        reconstructed_data_sample, _ = state.decode(data_latent)
+        reconstructed_data_sample, reconstructed_model_sample = state.decode(
+            torch.cat([data_latent, model_latent])
+        )[0].chunk(2, dim=0)
         # Compute concrete losses
         data_reconstruction = self.data_reconstruction.apply(
             sample=data,
             reconstructed_sample=reconstructed_data_sample,
+        )
+        model_reconstruction = self.model_reconstruction.apply(
+            sample=model_sample.detach(),
+            reconstructed_sample=reconstructed_model_sample,
         )
         model_latent_anchor_loss = self.model_latent_anchor.apply(latent=model_latent)
         data_latent_anchor_loss = self.data_latent_anchor.apply(latent=data_latent)
 
         return self.Loss(
             data_reconstruction=data_reconstruction,
+            model_reconstruction=model_reconstruction,
             model_latent_anchor=model_latent_anchor_loss,
             data_latent_anchor=data_latent_anchor_loss,
         )
@@ -120,20 +173,23 @@ class ChartPretrainConfig(BaseConfig):
     """
 
     data_reconstruction: ReconstructionConfig
+    model_reconstruction: ReconstructionConfig
     data_fiber_reconstruction: ReconstructionConfig
     prior_reconstruction: ReconstructionConfig
-    anchor_config: LatentAnchorConfig
+    anchor_config: LatentNormAnchorConfig
 
     @dataclass
     class Loss(BaseLoss):
         data_reconstruction: ReconstructionConfig.Loss
+        model_reconstruction: ReconstructionConfig.Loss
         data_fiber_reconstruction: ReconstructionConfig.Loss
         prior_reconstruction: ReconstructionConfig.Loss
-        anchor: LatentAnchorConfig.Loss
+        anchor: LatentNormAnchorConfig.Loss
 
         def sum(self):
             return (
                 self.data_fiber_reconstruction.sum()
+                + self.model_reconstruction.sum()
                 + self.data_reconstruction.sum()
                 + self.prior_reconstruction.sum()
                 + self.anchor.sum()
@@ -148,18 +204,29 @@ class ChartPretrainConfig(BaseConfig):
         batch_size = data.shape[0]
         prior = state.prior_config.sample(batch_size=batch_size).type_as(data)
         data_fiber = state.get_fiber(batch_size=batch_size).type_as(data)
+        model_fiber = state.get_fiber(batch_size=batch_size).type_as(data)
 
         # Forward passes
         data_latent = state.encode(data=data, fiber=data_fiber)
         combined_sample, combined_fiber = state.decode(torch.cat([data_latent, prior]))
         reconstructed_data_sample, model_sample = combined_sample.chunk(2, dim=0)
-        reconstructed_data_fiber, model_fiber = combined_fiber.chunk(2, dim=0)
-        reconstructed_prior = state.encode(data=model_sample, fiber=model_fiber)
+        reconstructed_data_fiber, reconstructed_model_fiber = combined_fiber.chunk(
+            2, dim=0
+        )
+        reconstructed_prior, model_latent = state.encode(
+            data=torch.cat([model_sample, model_sample.detach()]),
+            fiber=torch.cat([reconstructed_model_fiber, model_fiber]),
+        ).chunk(2, dim=0)
+        reconstructed_model_sample, _ = state.decode(model_latent)
 
         # Compute concrete losses
         data_reconstruction = self.data_reconstruction.apply(
             sample=data,
             reconstructed_sample=reconstructed_data_sample,
+        )
+        model_reconstruction = self.model_reconstruction.apply(
+            sample=model_sample.detach(),
+            reconstructed_sample=reconstructed_model_sample,
         )
         data_fiber_reconstruction = self.data_fiber_reconstruction.apply(
             sample=data_fiber, reconstructed_sample=reconstructed_data_fiber
@@ -171,6 +238,7 @@ class ChartPretrainConfig(BaseConfig):
 
         return self.Loss(
             data_reconstruction=data_reconstruction,
+            model_reconstruction=model_reconstruction,
             data_fiber_reconstruction=data_fiber_reconstruction,
             prior_reconstruction=prior_reconstruction,
             anchor=anchor_loss,

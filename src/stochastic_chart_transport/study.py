@@ -123,20 +123,6 @@ class StochasticChartTransportStudyState(BaseConfig):
         data: Float[Tensor, "batch ..."],
         compute_transport_loss: bool,
     ) -> IntegratedLoss:
-        """
-        Always computes chart + critic losses, and optionally transport.
-
-        Gradient contract:
-        1. `chart_loss` must see the attached decoded prior sample so the
-           prior-roundtrip continues to train the decoder through both sample
-           and fiber outputs.
-        2. `critic_loss` must see detached latents.
-        3. Data-side transport is sample-anchored: `decoder_data_loss`
-           compares transported data latents against the fixed observed batch.
-        4. Model-side transport is latent-only: `encoder_model_loss` acts on
-           stochastic re-encodings of model samples, and those gradients must
-           flow through both the encoder and decoder.
-        """
         batch_size = data.shape[0]
         # Model-independent sampling quantities
         prior = self.prior_config.sample(batch_size=batch_size).type_as(data)
@@ -160,7 +146,11 @@ class StochasticChartTransportStudyState(BaseConfig):
 
         # Compute losses
         constraint_loss = self.config.integrated_constraint.apply(
-            self, data=data, data_latent=data_latent, model_latent=model_latent
+            self,
+            data=data,
+            model_sample=model_sample,
+            data_latent=data_latent,
+            model_latent=model_latent,
         )
 
         critic_loss = self.get_critic_loss(
