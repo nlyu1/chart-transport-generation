@@ -97,6 +97,9 @@ class StochasticChartTransportLossConfig(BaseConfig):
                 noise_estimates = state.model.critic(
                     noised_latent, t=t, categorical=categorical
                 )
+                latent_prior_score = state.prior_config.analytic_score(
+                    y_t=noised_latent, t=t
+                )
                 if self.antipodal_estimate:
                     antipodal_noised_latent = state.config.critic.apply_mixture(
                         latent=latent, epsilon=-epsilon, t=t
@@ -105,10 +108,13 @@ class StochasticChartTransportLossConfig(BaseConfig):
                         antipodal_noised_latent, t=t, categorical=categorical
                     )
                     noise_estimates.add_(antipodal_noise_estimates).div_(2.0)
+                    antipodal_prior_score = state.prior_config.analytic_score(
+                        y_t=antipodal_noised_latent, t=t
+                    )
+                    latent_prior_score.add_(antipodal_prior_score).div_(2.0)
                 latent_score_estimates = einsum(
                     -1.0 / t, noise_estimates, "b, b ... -> b ..."
                 )
-                latent_prior_score = state.prior_config.analytic_score(y_t=latent, t=t)
                 # (1) Bulk-KL weighting of the Wasserstein transport objective
                 #   1 / (1-t)**2 corresponds to the uniform-velocity FM weight
                 #   we multiply another (1.0 - t) to account for pullback
