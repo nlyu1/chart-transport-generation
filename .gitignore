@@ -6,3 +6,6 @@ __pycache__/
 metastudies/
 artifacts/
 .omx/
+.playwright-cli/
+artifacts_legacy/
+output/
