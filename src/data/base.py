@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 
-from jaxtyping import Float
 from pydantic import ConfigDict
 from torch import Tensor
 
@@ -38,13 +37,6 @@ class BaseDataConfig(BaseConfig, ABC):
         *,
         batch_size: int,
     ) -> Tensor:
-        raise NotImplementedError
-
-    @abstractmethod
-    def log_likelihood(
-        self,
-        samples: Float[Tensor, "batch data_dim"],
-    ) -> Float[Tensor, "batch"]:
         raise NotImplementedError
 
 

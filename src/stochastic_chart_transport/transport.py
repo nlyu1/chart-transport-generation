@@ -128,9 +128,7 @@ class StochasticChartTransportLossConfig(BaseConfig):
                     )
                 )
                 weighted_prior_score_field.add_(
-                    einsum(
-                        latent_prior_score, noise_level_weights, "b ..., b -> b ..."
-                    )
+                    einsum(latent_prior_score, noise_level_weights, "b ..., b -> b ...")
                 )
         return weighted_score_field, weighted_prior_score_field
 
@@ -157,7 +155,9 @@ class StochasticChartTransportLossConfig(BaseConfig):
             latent=torch.cat([data_latent, data_latent]),
             categorical=combined_categorical,
         )
-        data_latent_data_score, _ = data_latent_score.chunk(2, dim=0)
+        data_latent_data_score, data_latent_model_score = data_latent_score.chunk(
+            2, dim=0
+        )
         data_latent_prior_score, _ = data_latent_prior_score.chunk(2, dim=0)
         # Model-latent scores
         model_latent_score, model_latent_prior_score = self._estimate_average_score(
@@ -165,13 +165,16 @@ class StochasticChartTransportLossConfig(BaseConfig):
             latent=torch.cat([model_latent, model_latent]),
             categorical=combined_categorical,
         )
-        _, model_latent_model_score = model_latent_score.chunk(2, dim=0)
+        model_latent_data_score, model_latent_model_score = model_latent_score.chunk(
+            2, dim=0
+        )
         _, model_latent_prior_score = model_latent_prior_score.chunk(2, dim=0)
 
         # Anchor both branches to the prior instead of each other.
         data_latent_transport_field = data_latent_prior_score - data_latent_data_score
         model_latent_transport_field = (
             model_latent_prior_score - model_latent_model_score
+            # model_latent_data_score - model_latent_model_score
         )
         return data_latent_transport_field, model_latent_transport_field
 
@@ -189,8 +192,11 @@ class StochasticChartTransportLossConfig(BaseConfig):
         transported_latent: Float[Tensor, "batch ..."],
     ) -> Float[Tensor, ""]:
         per_sample_squared_error = (
-            latent - transported_latent.detach()
-        ).reshape(latent.shape[0], -1).square().sum(dim=1)
+            (latent - transported_latent.detach())
+            .reshape(latent.shape[0], -1)
+            .square()
+            .sum(dim=1)
+        )
         return per_sample_squared_error.mean()
 
     def apply(
