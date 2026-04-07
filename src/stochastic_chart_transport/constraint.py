@@ -77,7 +77,9 @@ class LatentScaleAnchorConfig(BaseConfig):
         return self.Loss(
             latent_norm=(
                 per_dimension_second_moment - self.target_norm_per_dimension**2
-            ).pow(2).mean(),
+            )
+            .pow(2)
+            .mean(),
             latent_zero_mean=mean_penalty,
             latent_norm_weight=self.latent_norm_weight,
             latent_zero_mean_weight=self.latent_zero_mean_weight,
