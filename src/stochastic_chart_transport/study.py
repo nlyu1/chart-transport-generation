@@ -148,6 +148,7 @@ class StochasticChartTransportStudyState(BaseConfig):
         constraint_loss = self.config.integrated_constraint.apply(
             self,
             data=data,
+            data_fiber=data_fiber,
             model_sample=model_sample,
             data_latent=data_latent,
             model_latent=model_latent,
