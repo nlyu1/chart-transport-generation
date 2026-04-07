@@ -44,9 +44,9 @@ class LatentScaleAnchorConfig(BaseConfig):
     Anchors each latent coordinate's uncentered second moment about the origin.
 
     This penalizes deviation of each coordinate's ``E[z_i^2]`` from
-    ``target_norm_per_dimension^2``. Setting
-    ``target_norm_per_dimension=1.0`` matches the per-dimension second moment
-    of a standard Gaussian ``N(0, I_d)``.
+    ``target_norm_per_dimension^2``. Set
+    ``target_norm_per_dimension`` to the intended per-dimension RMS latent
+    scale. For a unit-scale Gaussian this is ``1.0``.
     """
 
     latent_norm_weight: float

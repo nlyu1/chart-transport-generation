@@ -12,17 +12,12 @@ from src.data.base import BaseDataConfig
 
 class MultimodalGaussianDataConfig(BaseDataConfig):
     num_modes: int
-    """Number of Gaussian modes, arranged as roots of unity in a 2D plane."""
     ambient_dimension: int
-    """A random isometry embeds the 2D plane into this ambient dimension."""
     mode_std: float
-    """Shared isotropic standard deviation for every mode in the 2D plane."""
-    isometry: Float[Tensor, "2 ambient_dimension"]
-    """Linear map from plane coordinates to ambient coordinates."""
-    projection: Float[Tensor, "ambient_dimension 2"]
-    """Left inverse of the isometry, used to project ambient points back to the plane."""
     offset: float
-    """All outputs are shifted by this amount along ambient coordinate 0 **in the 2-dim space**"""
+    scale: float
+    plane_basis: Float[Tensor, "2 ambient_dimension"]
+    mode_centers: Float[Tensor, "num_modes ambient_dimension"]
 
     @classmethod
     def initialize(
@@ -32,100 +27,60 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         mode_std: float,
         offset: float,
         ambient_dimension: int,
+        scale: float,
     ) -> Self:
+        if num_modes <= 0:
+            raise ValueError("num_modes must be positive")
         if ambient_dimension < 2:
             raise ValueError("ambient_dimension must be at least 2")
-        raw = torch.randn(ambient_dimension, 2)
-        projection, _ = torch.linalg.qr(raw, mode="reduced")
-        projection = projection[:, :2]
-        isometry = projection.transpose(0, 1)
+        if mode_std < 0.0:
+            raise ValueError("mode_std must be non-negative")
+        if scale <= 0.0:
+            raise ValueError("scale must be positive")
+
+        random_plane = torch.randn(ambient_dimension, 2)
+        plane_basis, _ = torch.linalg.qr(random_plane, mode="reduced")
+        plane_basis = plane_basis.transpose(0, 1)
+
+        angles = torch.linspace(0.0, 2.0 * math.pi, num_modes + 1)[:-1]
+        centers_2d = torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)
+        mode_centers = scale * (centers_2d @ plane_basis)
+
         return cls(
             num_classes=num_modes,
             data_shape=[ambient_dimension],
             num_modes=num_modes,
             ambient_dimension=ambient_dimension,
             mode_std=mode_std,
-            isometry=isometry,
-            projection=projection,
             offset=offset,
+            scale=scale,
+            plane_basis=plane_basis,
+            mode_centers=mode_centers,
         )
 
-    def offset_vector(self) -> Float[Tensor, "ambient_dimension"]:
+    def _offset_vector(self) -> Float[Tensor, "ambient_dimension"]:
         offset_vector = torch.zeros(
             self.ambient_dimension,
-            device=self.isometry.device,
-            dtype=self.isometry.dtype,
+            device=self.mode_centers.device,
+            dtype=self.mode_centers.dtype,
         )
         offset_vector[0] = self.offset
         return offset_vector
-
-    def to(
-        self,
-        *,
-        device: torch.device,
-    ) -> Self:
-        return self.replace(
-            path="isometry",
-            replacement=self.isometry.to(device=device),
-        ).replace(
-            path="projection",
-            replacement=self.projection.to(device=device),
-        )
-
-    def mode_centers_2d(self) -> Float[Tensor, "num_modes 2"]:
-        angles = torch.linspace(
-            0.0,
-            2.0 * math.pi,
-            self.num_modes + 1,
-            device=self.isometry.device,
-            dtype=self.isometry.dtype,
-        )[:-1]
-        return torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)
-
-    def embed(
-        self,
-        x_2d: Float[Tensor, "batch 2"],
-    ) -> Float[Tensor, "batch ambient_dimension"]:
-        x_2d = x_2d.to(device=self.isometry.device, dtype=self.isometry.dtype)
-        return x_2d @ self.isometry + self.offset_vector()
-
-    def project(
-        self,
-        x_hd: Float[Tensor, "batch ambient_dimension"],
-    ) -> Float[Tensor, "batch 2"]:
-        x_hd = x_hd.to(device=self.projection.device, dtype=self.projection.dtype)
-        return (x_hd - self.offset_vector()) @ self.projection
-
-    def decompose_projection(
-        self,
-        x_hd: Float[Tensor, "batch ambient_dimension"],
-    ) -> tuple[
-        Float[Tensor, "batch 2"],
-        Float[Tensor, "batch ambient_dimension"],
-        Float[Tensor, "batch ambient_dimension"],
-    ]:
-        projected_2d = self.project(x_hd)
-        in_plane = self.embed(projected_2d)
-        off_plane = x_hd.to(device=in_plane.device, dtype=in_plane.dtype) - in_plane
-        return projected_2d, in_plane, off_plane
-
-    def mode_centers(self) -> Float[Tensor, "num_modes ambient_dimension"]:
-        return self.embed(self.mode_centers_2d())
 
     def _sample_mode_ids(
         self,
         *,
         mode_ids: Tensor,
     ) -> Float[Tensor, "batch ambient_dimension"]:
-        centers_2d = self.mode_centers_2d()
-        mode_ids = mode_ids.to(device=centers_2d.device, dtype=torch.long)
-        noise = self.mode_std * torch.randn(
+        mode_ids = mode_ids.to(device=self.mode_centers.device, dtype=torch.long)
+        noise_2d = (self.scale * self.mode_std) * torch.randn(
             mode_ids.shape[0],
             2,
-            device=centers_2d.device,
-            dtype=centers_2d.dtype,
+            device=self.mode_centers.device,
+            dtype=self.mode_centers.dtype,
         )
-        return self.embed(centers_2d[mode_ids] + noise)
+        noise = noise_2d @ self.plane_basis
+        return self.mode_centers[mode_ids] + noise + self._offset_vector()
 
     def sample_class(
         self,
@@ -133,10 +88,12 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         mode_id: int,
         batch_size: int,
     ) -> Float[Tensor, "batch ambient_dimension"]:
+        if mode_id < 0 or mode_id >= self.num_classes:
+            raise ValueError(f"mode_id must be in [0, {self.num_classes})")
         mode_ids = torch.full(
             (batch_size,),
             fill_value=mode_id,
-            device=self.isometry.device,
+            device=self.mode_centers.device,
             dtype=torch.long,
         )
         return self._sample_mode_ids(mode_ids=mode_ids)
@@ -149,109 +106,9 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         mode_ids = torch.randint(
             self.num_classes,
             size=(batch_size,),
-            device=self.isometry.device,
+            device=self.mode_centers.device,
         )
         return self._sample_mode_ids(mode_ids=mode_ids)
-
-    def log_likelihood(
-        self,
-        samples: Float[Tensor, "batch data_dim"],
-    ) -> Float[Tensor, "batch"]:
-        """Report the Gaussian-mixture log-likelihood after projecting samples onto the embedded 2D plane."""
-        projected_samples = self.project(samples)
-        mode_centers = self.mode_centers_2d()
-        centered_samples = projected_samples[:, None, :] - mode_centers[None, :, :]
-        squared_distances = centered_samples.square().sum(dim=-1)
-        component_log_normalizer = math.log(2.0 * math.pi * self.mode_std**2)
-        component_log_densities = (
-            -0.5 * squared_distances / (self.mode_std**2) - component_log_normalizer
-        )
-        return torch.logsumexp(component_log_densities, dim=1) - math.log(self.num_classes)
-
-    def approximate_kl(
-        self,
-        data_samples: Float[Tensor, "batch ambient_dimension"],
-        kde_scales: list[float],
-        kl_num_samples: int,
-        avg_kl_num_batches: int,
-    ) -> Float[Tensor, "kde_scales mode_id"]:
-        """
-        Estimate per-mode forward KL from the true 2D Gaussian component to a projected
-        Gaussian KDE fit to ``data_samples``.
-
-        ``kde_scales`` are interpreted as per-dimension kernel variances.
-
-        The ambient-space data distribution is singular away from the embedded plane, so
-        this monitor intentionally evaluates the projected 2D distribution.
-        """
-        if len(kde_scales) == 0:
-            raise ValueError("kde_scales must be non-empty")
-        if kl_num_samples <= 0:
-            raise ValueError("kl_num_samples must be positive")
-        if avg_kl_num_batches <= 0:
-            raise ValueError("avg_kl_num_batches must be positive")
-        if data_samples.ndim != 2:
-            raise ValueError("data_samples must be rank-2")
-        if data_samples.shape[0] <= 0:
-            raise ValueError("data_samples must contain at least one sample")
-
-        projected_data_samples = self.project(data_samples).to(dtype=torch.float32)
-        kde_scale_tensor = torch.tensor(
-            kde_scales,
-            device=projected_data_samples.device,
-            dtype=projected_data_samples.dtype,
-        )
-        if torch.any(kde_scale_tensor <= 0.0):
-            raise ValueError("kde_scales must be strictly positive")
-
-        log_num_data_samples = math.log(projected_data_samples.shape[0])
-        scale_per_dimension = kde_scale_tensor.reshape(-1, 1, 1)
-        log_kde_normalizer = (
-            math.log(2.0 * math.pi) + torch.log(kde_scale_tensor)
-        ).reshape(-1, 1)
-        component_log_normalizer = math.log(2.0 * math.pi * self.mode_std**2)
-        mode_centers = self.mode_centers_2d().to(
-            device=projected_data_samples.device,
-            dtype=projected_data_samples.dtype,
-        )
-
-        approximate_kl = torch.zeros(
-            (len(kde_scales), self.num_modes),
-            device=projected_data_samples.device,
-            dtype=projected_data_samples.dtype,
-        )
-
-        for _ in range(avg_kl_num_batches):
-            for mode_id in range(self.num_modes):
-                projected_mode_samples = self.project(
-                    self.sample_class(
-                        mode_id=mode_id,
-                        batch_size=kl_num_samples,
-                    )
-                ).to(dtype=projected_data_samples.dtype)
-                squared_distances = torch.cdist(
-                    projected_mode_samples,
-                    projected_data_samples,
-                    p=2.0,
-                ).square()
-                centered_samples = projected_mode_samples - mode_centers[mode_id]
-                exact_log_density = (
-                    -0.5 * centered_samples.square().sum(dim=-1) / (self.mode_std**2)
-                    - component_log_normalizer
-                )
-                kde_log_density = (
-                    torch.logsumexp(
-                        -0.5 * squared_distances.unsqueeze(0) / scale_per_dimension
-                        - log_kde_normalizer.unsqueeze(-1),
-                        dim=-1,
-                    )
-                    - log_num_data_samples
-                )
-                approximate_kl[:, mode_id] += (
-                    exact_log_density.unsqueeze(0) - kde_log_density
-                ).mean(dim=-1)
-
-        return approximate_kl / avg_kl_num_batches
 
 
 __all__ = ["MultimodalGaussianDataConfig"]

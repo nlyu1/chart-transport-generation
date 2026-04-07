@@ -13,6 +13,7 @@ from src.priors.base import BasePriorConfig
 
 class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
     precision: float
+    scale: float
 
     @classmethod
     def initialize(
@@ -20,16 +21,20 @@ class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
         *,
         latent_shape: list[int],
         precision: float,
+        scale: float,
     ) -> Self:
         return cls(
             latent_shape=latent_shape,
             precision=precision,
+            scale=scale,
         )
 
     @model_validator(mode="after")
     def _validate_config(self) -> Self:
         if self.precision < 1.0:
             raise ValueError("precision must be at least 1.0")
+        if self.scale <= 0.0:
+            raise ValueError("scale must be positive")
         return self
 
     @staticmethod
@@ -49,13 +54,19 @@ class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
         target_ndim: int,
     ) -> tuple[Float[Tensor, "batch ..."], Float[Tensor, "batch ..."]]:
         one_minus_t = 1.0 - t
-        narrow_variance = t.square() + one_minus_t.square() / self.precision
-        wide_variance = t.square() + one_minus_t.square() * self.precision
+        narrow_component_variance, wide_component_variance = (
+            self._component_variance_values()
+        )
+        narrow_variance = t.square() + one_minus_t.square() * narrow_component_variance
+        wide_variance = t.square() + one_minus_t.square() * wide_component_variance
         broadcast_shape = (t.shape[0], *([1] * (target_ndim - 1)))
         return (
             narrow_variance.reshape(broadcast_shape),
             wide_variance.reshape(broadcast_shape),
         )
+
+    def _component_variance_values(self) -> tuple[float, float]:
+        return self.scale**2 / self.precision, self.scale**2 * self.precision
 
     def sample(
         self,
@@ -64,25 +75,32 @@ class AnchoredGaussianScaleMixturePriorConfig(BasePriorConfig):
     ) -> Float[Tensor, "batch ..."]:
         sample_shape = (batch_size, *self.latent_shape)
         narrow_probability = self.precision / (self.precision + 1.0)
+        samples = torch.randn(sample_shape)
         component_is_narrow = torch.rand(sample_shape) < narrow_probability
+        narrow_component_variance, wide_component_variance = (
+            self._component_variance_values()
+        )
         component_variance = torch.where(
             component_is_narrow,
-            torch.full(sample_shape, 1.0 / self.precision),
-            torch.full(sample_shape, self.precision),
+            torch.full_like(samples, narrow_component_variance),
+            torch.full_like(samples, wide_component_variance),
         )
-        return torch.randn(sample_shape) * component_variance.sqrt()
+        return samples * component_variance.sqrt()
 
     def log_likelihood(
         self,
         samples: Float[Tensor, "batch ..."],
     ) -> Float[Tensor, "batch"]:
+        narrow_component_variance, wide_component_variance = (
+            self._component_variance_values()
+        )
         narrow_log_density = self._normal_log_density(
             samples=samples,
-            variance=torch.full_like(samples, 1.0 / self.precision),
+            variance=torch.full_like(samples, narrow_component_variance),
         )
         wide_log_density = self._normal_log_density(
             samples=samples,
-            variance=torch.full_like(samples, self.precision),
+            variance=torch.full_like(samples, wide_component_variance),
         )
         coordinate_log_likelihood = torch.logaddexp(
             math.log(self.precision) + narrow_log_density,
