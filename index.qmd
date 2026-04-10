@@ -1,10 +1,17 @@
 ---
-title: "Diffusive Latent Generation"
-subtitle: "Placeholder single-page writeup"
-author: "Nicholas (Xingjian) Lyu"
+title: "Drifting and Chart Transport"
+author: "Nicholas Lyu"
 date: last-modified
 title-block-banner: false
 ---
+
+Summary of research progress in the last month. Tldr:
+
+1. A simple toy model highlights drifting's reverse-KL issue.
+2. Simple toy model shows that drifting scales badly with ambient dimension.
+3. **Deterministic chart transport** addresses both problems.
+4. Challenge to *deterministic chart transport*: data lies on a low dimensional manifold.
+5. Stochastic chart transport and its challenges.
 
 # Abstract
 
