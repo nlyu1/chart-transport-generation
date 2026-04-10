@@ -13,6 +13,8 @@ from src.data.base import BaseDataConfig
 class MultimodalGaussianDataConfig(BaseDataConfig):
     num_modes: int
     """Number of Gaussian modes, arranged as roots of unity in a 2D plane."""
+    mode_radius: float
+    """Radius of the 2D root-of-unity ring before embedding."""
     ambient_dimension: int
     """A random isometry embeds the 2D plane into this ambient dimension."""
     mode_std: float
@@ -29,12 +31,15 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
         cls,
         *,
         num_modes: int,
+        mode_radius: float = 1.0,
         mode_std: float,
         offset: float,
         ambient_dimension: int,
     ) -> Self:
         if ambient_dimension < 2:
             raise ValueError("ambient_dimension must be at least 2")
+        if mode_radius <= 0.0:
+            raise ValueError("mode_radius must be positive")
         raw = torch.randn(ambient_dimension, 2)
         projection, _ = torch.linalg.qr(raw, mode="reduced")
         projection = projection[:, :2]
@@ -43,6 +48,7 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
             num_classes=num_modes,
             data_shape=[ambient_dimension],
             num_modes=num_modes,
+            mode_radius=mode_radius,
             ambient_dimension=ambient_dimension,
             mode_std=mode_std,
             isometry=isometry,
@@ -80,7 +86,10 @@ class MultimodalGaussianDataConfig(BaseDataConfig):
             device=self.isometry.device,
             dtype=self.isometry.dtype,
         )[:-1]
-        return torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)
+        return self.mode_radius * torch.stack(
+            [torch.cos(angles), torch.sin(angles)],
+            dim=-1,
+        )
 
     def embed(
         self,

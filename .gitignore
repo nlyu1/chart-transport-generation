@@ -7,3 +7,8 @@ metastudies/
 artifacts/
 *artifacts/
 .omx/
+writeup/.quarto/
+writeup/.sass-cache/
+
+/.quarto/
+**/*.quarto_ipynb

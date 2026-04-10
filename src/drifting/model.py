@@ -8,100 +8,92 @@ from jaxtyping import Float
 from pydantic import model_validator
 from torch import Tensor
 
+from src.config.base import BaseConfig
 from src.model.base import ModelConfig
 
 
-class AffineGaussianTransportModel(nn.Module):
-    def __init__(self, *, config: "AffineGaussianTransportModelConfig") -> None:
-        super().__init__()
-        self.config = config
-        self.mean = nn.Parameter(config.init_mean.clone())
-        self.linear = nn.Parameter(config.init_linear.clone())
-
-    def forward(
-        self,
-        latent: Float[Tensor, "batch latent_dim"],
-    ) -> Float[Tensor, "batch ambient_dim"]:
-        return latent @ self.linear.transpose(0, 1) + self.mean
-
-    def covariance(self) -> Float[Tensor, "ambient_dim ambient_dim"]:
-        return self.linear @ self.linear.transpose(0, 1)
-
-    def distribution(self) -> torch.distributions.MultivariateNormal:
-        covariance = self.covariance()
-        jitter = self.config.distribution_jitter * torch.eye(
-            covariance.shape[0],
-            device=covariance.device,
-            dtype=covariance.dtype,
-        )
-        return torch.distributions.MultivariateNormal(
-            loc=self.mean,
-            covariance_matrix=covariance + jitter,
-        )
-
-
-class AffineGaussianTransportModelConfig(ModelConfig):
-    init_mean: Float[Tensor, "ambient_dim"]
-    init_linear: Float[Tensor, "ambient_dim latent_dim"]
+class DriftingModelConfig(BaseConfig):
+    generator: ModelConfig
     lr: float
     grad_clip_norm: float
-    distribution_jitter: float = 1e-4
+    linear_weight_scale: float = 1.0
+    zero_linear_bias: bool = False
+    output_bias: Float[Tensor, "output_dim"] | None = None
 
     @classmethod
     def initialize(
         cls,
         *,
-        init_mean: list[float],
-        init_linear: list[list[float]],
+        generator: ModelConfig,
         lr: float,
         grad_clip_norm: float,
-        distribution_jitter: float = 1e-4,
+        linear_weight_scale: float = 1.0,
+        zero_linear_bias: bool = False,
+        output_bias: list[float] | None = None,
     ) -> Self:
+        output_bias_tensor = None
+        if output_bias is not None:
+            output_bias_tensor = torch.tensor(output_bias, dtype=torch.float32)
         return cls(
-            init_mean=torch.tensor(init_mean, dtype=torch.float32),
-            init_linear=torch.tensor(init_linear, dtype=torch.float32),
+            generator=generator,
             lr=lr,
             grad_clip_norm=grad_clip_norm,
-            distribution_jitter=distribution_jitter,
+            linear_weight_scale=linear_weight_scale,
+            zero_linear_bias=zero_linear_bias,
+            output_bias=output_bias_tensor,
         )
 
     @model_validator(mode="after")
     def _validate_config(self) -> Self:
-        if self.init_mean.ndim != 1:
-            raise ValueError("init_mean must be rank-1")
-        if self.init_linear.ndim != 2:
-            raise ValueError("init_linear must be rank-2")
-        if self.init_linear.shape[0] != self.init_mean.shape[0]:
-            raise ValueError(
-                "init_linear output dimension must match init_mean dimension"
-            )
         if self.lr <= 0.0:
             raise ValueError("lr must be positive")
         if self.grad_clip_norm <= 0.0:
             raise ValueError("grad_clip_norm must be positive")
-        if self.distribution_jitter <= 0.0:
-            raise ValueError("distribution_jitter must be positive")
+        if self.linear_weight_scale <= 0.0:
+            raise ValueError("linear_weight_scale must be positive")
+        if self.output_bias is not None and self.output_bias.ndim != 1:
+            raise ValueError("output_bias must be rank-1")
         return self
 
-    @property
-    def latent_dimension(self) -> int:
-        return self.init_linear.shape[1]
+    def get_model(self) -> nn.Module:
+        model = self.generator.get_model()
+        self.initialize_parameters(model)
+        return model
 
-    @property
-    def ambient_dimension(self) -> int:
-        return self.init_mean.shape[0]
-
-    def get_model(self) -> AffineGaussianTransportModel:
-        return AffineGaussianTransportModel(config=self)
+    def initialize_parameters(
+        self,
+        model: nn.Module,
+    ) -> None:
+        linear_layers: list[nn.Linear] = []
+        with torch.no_grad():
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    module.weight.mul_(self.linear_weight_scale)
+                    if self.zero_linear_bias and module.bias is not None:
+                        module.bias.zero_()
+                    linear_layers.append(module)
+            if self.output_bias is not None:
+                if not linear_layers:
+                    raise ValueError("output_bias requires at least one linear layer")
+                output_layer = linear_layers[-1]
+                if output_layer.bias is None:
+                    raise ValueError("final linear layer must have a bias term")
+                if output_layer.bias.shape != self.output_bias.shape:
+                    raise ValueError(
+                        "output_bias shape must match the final linear layer bias shape"
+                    )
+                output_layer.bias.copy_(
+                    self.output_bias.to(
+                        device=output_layer.bias.device,
+                        dtype=output_layer.bias.dtype,
+                    )
+                )
 
     def get_optimizer(
         self,
-        model: AffineGaussianTransportModel,
+        model: nn.Module,
     ) -> torch.optim.Optimizer:
         return torch.optim.Adam(model.parameters(), lr=self.lr)
 
 
-__all__ = [
-    "AffineGaussianTransportModel",
-    "AffineGaussianTransportModelConfig",
-]
+__all__ = ["DriftingModelConfig"]

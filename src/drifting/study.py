@@ -3,15 +3,13 @@ from __future__ import annotations
 from torch.nn.utils import clip_grad_norm_
 
 import torch
+import torch.nn as nn
 from jaxtyping import Float
 from torch import Tensor
 
 from src.config.base import BaseConfig
 from src.data.base import BaseDataConfig
-from src.drifting.model import (
-    AffineGaussianTransportModel,
-    AffineGaussianTransportModelConfig,
-)
+from src.drifting.model import DriftingModelConfig
 from src.drifting.transport import ReverseKLDriftingLossConfig
 from src.priors.base import BasePriorConfig
 
@@ -19,13 +17,13 @@ from src.priors.base import BasePriorConfig
 class DriftingStudyConfig(BaseConfig):
     data: BaseDataConfig
     prior: BasePriorConfig
-    model: AffineGaussianTransportModelConfig
+    model: DriftingModelConfig
     drifting: ReverseKLDriftingLossConfig
 
 
 class DriftingStudyState(BaseConfig):
     config: DriftingStudyConfig
-    model: AffineGaussianTransportModel
+    model: nn.Module
     op: torch.optim.Optimizer
     device: torch.device
 
@@ -96,9 +94,6 @@ class DriftingStudyState(BaseConfig):
     @property
     def prior_config(self) -> BasePriorConfig:
         return self.config.prior
-
-    def model_distribution(self) -> torch.distributions.MultivariateNormal:
-        return self.model.distribution()
 
 
 __all__ = [

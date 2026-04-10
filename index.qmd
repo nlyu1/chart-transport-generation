@@ -1,0 +1,35 @@
+---
+title: "Diffusive Latent Generation"
+subtitle: "Placeholder single-page writeup"
+author: "Nicholas (Xingjian) Lyu"
+date: last-modified
+title-block-banner: false
+---
+
+# Abstract
+
+Replace this with a short abstract.
+
+# Motivation
+
+Replace this with the problem statement and motivation.
+
+# Method
+
+Replace this with the method overview.
+
+# Theory
+
+Replace this with the key equations and claims.
+
+# Implementation
+
+Replace this with the mapping to the codebase.
+
+# Experiments
+
+Replace this with results, figures, and comparisons.
+
+# References
+
+Replace this with citations or links.

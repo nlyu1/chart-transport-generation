@@ -1,7 +1,4 @@
-from src.drifting.model import (
-    AffineGaussianTransportModel,
-    AffineGaussianTransportModelConfig,
-)
+from src.drifting.model import DriftingModelConfig
 from src.drifting.study import DriftingStudyConfig, DriftingStudyState
 from src.drifting.transport import GaussianKernelConfig, ReverseKLDriftingLossConfig
 from src.drifting.visualization import (
@@ -11,8 +8,7 @@ from src.drifting.visualization import (
 )
 
 __all__ = [
-    "AffineGaussianTransportModel",
-    "AffineGaussianTransportModelConfig",
+    "DriftingModelConfig",
     "DriftingStudyConfig",
     "DriftingStudyState",
     "GaussianKernelConfig",

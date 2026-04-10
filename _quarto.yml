@@ -1,0 +1,15 @@
+project:
+  output-dir: docs
+  render:
+    - index.qmd
+
+format:
+  html:
+    theme: default
+    toc: true
+    toc-depth: 3
+
+execute:
+  echo: false
+  warning: false
+  message: false

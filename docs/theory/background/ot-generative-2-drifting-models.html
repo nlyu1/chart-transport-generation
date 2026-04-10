@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="dcterms.date" content="2026-02-23">
+
+<title>OT for generative modeling 2 — Wasserstein gradients and drifting models – Diffusive Latent Generation</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-719edf7fba01f5a886ffab10bbd48302.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Diffusive Latent Generation</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#contents" id="toc-contents" class="nav-link active" data-scroll-target="#contents">Contents</a></li>
+  <li><a href="#formulation" id="toc-formulation" class="nav-link" data-scroll-target="#formulation">Formulation</a>
+  <ul class="collapse">
+  <li><a href="#the-drifting-field" id="toc-the-drifting-field" class="nav-link" data-scroll-target="#the-drifting-field">The drifting field</a></li>
+  </ul></li>
+  <li><a href="#wasserstein-gradient-flow" id="toc-wasserstein-gradient-flow" class="nav-link" data-scroll-target="#wasserstein-gradient-flow">Wasserstein Gradient Flow</a>
+  <ul class="collapse">
+  <li><a href="#the-kullback-leibler-functional" id="toc-the-kullback-leibler-functional" class="nav-link" data-scroll-target="#the-kullback-leibler-functional">The Kullback-Leibler functional</a></li>
+  <li><a href="#gradients-on-manifolds" id="toc-gradients-on-manifolds" class="nav-link" data-scroll-target="#gradients-on-manifolds">Gradients on manifolds</a></li>
+  <li><a href="#proving-ottos-theorem" id="toc-proving-ottos-theorem" class="nav-link" data-scroll-target="#proving-ottos-theorem">Proving Otto’s theorem</a></li>
+  </ul></li>
+  <li><a href="#statistical-interpretation-of-drifting" id="toc-statistical-interpretation-of-drifting" class="nav-link" data-scroll-target="#statistical-interpretation-of-drifting">Statistical interpretation of drifting</a>
+  <ul class="collapse">
+  <li><a href="#gaussian-kernel-smoothing-implements-reverse-kl" id="toc-gaussian-kernel-smoothing-implements-reverse-kl" class="nav-link" data-scroll-target="#gaussian-kernel-smoothing-implements-reverse-kl">Gaussian kernel smoothing implements Reverse KL</a></li>
+  <li><a href="#implementing-forward-kl" id="toc-implementing-forward-kl" class="nav-link" data-scroll-target="#implementing-forward-kl">Implementing forward KL</a></li>
+  <li><a href="#proposition-maximum-likelihood-drifting" id="toc-proposition-maximum-likelihood-drifting" class="nav-link" data-scroll-target="#proposition-maximum-likelihood-drifting">Proposition: maximum likelihood drifting</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">OT for generative modeling 2 — Wasserstein gradients and drifting models</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">February 23, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Diffusion and flow matching split the generative problem into two phases: at <em>training</em> time, learn a vector field; at <em>inference</em> time, integrate an ODE or SDE through that field to produce a sample. The integration is expensive, and a great deal of recent work has gone into compressing it: distillation, consistency models, progressive reduction.</p>
+<p>Recent work on <strong>Drifting Models</strong> (<a href="https://arxiv.org/abs/2602.04770">Deng et al., 2026</a>) defines a “drifting field” <span class="math inline">\(\mathbf{V}_{p,q}(\mathbf{x})\)</span> that tells each generated sample which direction to move, requires antisymmetry (<span class="math inline">\(\mathbf{V}_{p,q} = -\mathbf{V}_{q,p}\)</span>) so that the field vanishes at equilibrium (<span class="math inline">\(p = q\)</span>), and train the generator to chase its own drifted targets.</p>
+<p>We currently have a mechanical interpretation – the loss going to zero produces desirable behavior. But equipped with the Wasserstein machinery we built in <a href="../../blogs/machine-learning/ot-generative-0-static/">parts 0</a>–<a href="../../blogs/machine-learning/ot-generative-1-wasserstein-geometry/">1</a>, we can say something much sharper. The antisymmetric drifting field is the Wasserstein gradient of a distribution discrepancy; the training dynamics execute gradient descent on the manifold <span class="math inline">\(\mathcal{W}_2\)</span>; and the <span class="math inline">\(L^2\)</span> regression loss against drifted targets is, through the Wasserstein bridge, a gradient step on a proper statistical divergence. The whole paradigm admits a precise connection to maximum likelihood.</p>
+<p>For those looking for novel content, the main results of this post are as follows:</p>
+<ol type="1">
+<li><a href="#gaussian-kernel-smoothing-implements-reverse-kl"><strong>Statistical interpretation of Gaussian drifting</strong></a>: we show that drifting with a Gaussian kernel implements Wasserstein gradient descent on the reverse, mode-seeking KL divergence <span class="math inline">\(\mrm{KL}(\tilde q_\theta \| \tilde p_{\mathrm{data}})\)</span> between KDE-smoothed distributions. The stop-grad loss implements gradient pullback from sample to parameter space.</li>
+<li><a href="#proposition-maximum-likelihood-drifting"><strong>Maximum likelihood modification</strong></a>: we derive the drifting field for the maximum likelihood (forward KL) objective <span class="math inline">\(\mrm{KL}(\tilde p_{\mathrm{data}} \| \tilde q_\theta)\)</span>. The changes to the current paradigm are minimal: reweigh by the density ratio <span class="math inline">\(Z_p/Z_q\)</span> and use the Gaussian (instead of Laplace) kernel. The resulting drifting field is notably not antisymmetric.</li>
+</ol>
+<section id="contents" class="level2">
+<h2 class="anchored" data-anchor-id="contents">Contents</h2>
+<ul>
+<li><a href="#contents">Contents</a></li>
+<li><a href="#formulation">Formulation</a>
+<ul>
+<li><a href="#the-drifting-field">The drifting field</a></li>
+</ul></li>
+<li><a href="#wasserstein-gradient-flow">Wasserstein Gradient Flow</a>
+<ul>
+<li><a href="#the-kullback-leibler-functional">The Kullback-Leibler functional</a></li>
+<li><a href="#gradients-on-manifolds">Gradients on manifolds</a></li>
+<li><a href="#proving-ottos-theorem">Proving Otto’s theorem</a></li>
+</ul></li>
+<li><a href="#statistical-interpretation-of-drifting">Statistical interpretation of drifting</a>
+<ul>
+<li><a href="#gaussian-kernel-smoothing-implements-reverse-kl">Gaussian kernel smoothing implements Reverse KL</a></li>
+<li><a href="#implementing-forward-kl">Implementing forward KL</a></li>
+<li><a href="#proposition-maximum-likelihood-drifting">Proposition: maximum likelihood drifting</a></li>
+</ul></li>
+</ul>
+</section>
+<section id="formulation" class="level2">
+<h2 class="anchored" data-anchor-id="formulation">Formulation</h2>
+<p>The drifting models paradigm consists of:</p>
+<ul>
+<li>a <strong>drifting field</strong> that tells generated samples which direction to move</li>
+<li>a <strong>training loop</strong> that chases drifted targets</li>
+</ul>
+<p>In this generative paradigm, we’re given samples from <span class="math inline">\(P_{\mathrm{data}} \in \mathcal W_2(\R^n)\)</span>, we consider an initial noise distribution <span class="math inline">\(P_{\mathrm{noise}} \in \mathcal W_2(\R^d)\)</span>, and a parametric model generator <span class="math inline">\(f_\theta: \mathbb R^d\to \mathbb R^n\)</span>. Denote the pushforward measure by <span class="math inline">\(P_{\mathrm{model}} \in \mathcal W_2(\R^n)\)</span>. To be consistent with the paper, we abbreviate <span class="math display">\[
+    p := P_{\mathrm{data}}, \quad q_\theta := P_{\mathrm{model}, \theta}
+\]</span> The work considers general antisymmetric drift fields <span class="math inline">\(V_{p, q}: \mathbb R^n\to \mathbb R^n\)</span>; each field is a vector field on the sample space. The training loop consists of iteratively minimizing</p>
+<p><span class="math display">\[
+    \mathcal L = \mathbb E_{\epsilon\sim P_{\mathrm{noise}}} \| f_\theta(\epsilon) - \text{stopgrad} \left[
+        f_\theta(\epsilon) + V_{p, q_\theta}(f_\theta(\epsilon))
+    \right] \|^2
+\]</span> Note that <span class="math inline">\(p=q \implies \mathcal L=0\)</span>. Further note that if <span class="math inline">\(V = \nabla \varphi\)</span>, then <span class="math display">\[
+\begin{aligned}
+    \nabla_\theta \mathcal L
+    &amp;\propto
+    \nabla_\theta \mathbb E_{\epsilon \sim P_{\mathrm{noise}}} \left[J_{f_\theta}^T\left[
+        f_\theta(\epsilon) - f_\theta(\epsilon) + \nabla_{f_\theta(\epsilon)} \varphi(f_\theta(\epsilon))
+    \right]\right] \\
+    &amp;= \nabla_\theta \mathbb E_{\epsilon \sim P_{\mathrm{noise}}} \left[
+        J_{f_\theta}^T \nabla \varphi
+    \right]
+\end{aligned}
+\]</span> &gt; The stop-grad loss exactly implements the pullback of the gradient. If <span class="math inline">\(V\)</span> is a gradient on sample space <span class="math inline">\(\R^n\)</span>, then <span class="math inline">\(\nabla_\theta \mathcal L\)</span> is the pullback of the gradient in parameter space.</p>
+<section id="the-drifting-field" class="level3">
+<h3 class="anchored" data-anchor-id="the-drifting-field">The drifting field</h3>
+<p>Let’s consider the authors’ choice of the drifting field :::definition[canonical drifting field]</p>
+<p>Consider the following antisymmetric drifting field evaluated at sample space <span class="math inline">\(x\in \mathbb R^n\)</span>: <span class="math display">\[
+\begin{aligned}
+    V_{p,q}(x)
+    &amp;=
+    \underbrace{\frac{1}{Z_p(x)}\E_{y^+\sim p}\!\left[k(x, y^+)(y^+ - x)\right]}_{V_p^+(x):\;\text{attraction to data}} \;-\; \underbrace{\frac{1}{Z_q(x)}\E_{y^-\sim q}\!\left[k(x, y^-)(y^- - x)\right]}_{V_q^-(x):\;\text{repulsion from model}} \\
+    &amp;= \mathbb E_{y^+\sim p, y^-\sim q} \left[
+        \dfrac{k(x, y^+) k(x, y^-)}{Z_pZ_q}(y^+ - y^-)
+    \right]
+\end{aligned}
+\]</span> The authors chose the Laplace kernel <span class="math display">\[
+    k(x,y) = \exp(-\|x - y\|/\tau)
+\]</span> The per-point normalization translates to softmax weighting <span class="math display">\[
+    Z_p(x) = \E_{y^+\sim p}[k(x, y^+)], \quad Z_q(x) = \E_{y^-\sim q}[k(x, y^-)]
+\]</span> :::</p>
+</section>
+</section>
+<section id="wasserstein-gradient-flow" class="level2">
+<h2 class="anchored" data-anchor-id="wasserstein-gradient-flow">Wasserstein Gradient Flow</h2>
+<p>We take a step back to develop the theory of <strong>Wasserstein gradient flow</strong> (and return to capital letters): given a probability distribution <span class="math inline">\(Q_\theta\)</span>, we can assign some loss / preference to it by some functional <span class="math inline">\(\mathcal F:\mathcal W_2\to \R\)</span>. What happens to the probability distribution as we try to minimize <span class="math inline">\(\mathcal F(q_\theta)\)</span> by gradient descent?</p>
+<section id="the-kullback-leibler-functional" class="level3">
+<h3 class="anchored" data-anchor-id="the-kullback-leibler-functional">The Kullback-Leibler functional</h3>
+<p>Fixing data distribution <span class="math inline">\(p\)</span>, maximizing likelihood of the data under the model is equivalent to minimizing the KL divergence: <span class="math display">\[
+\begin{aligned}
+    \mrm{KL}(P\|Q_\theta)
+    &amp;= \mathbb E_{x\sim P} \left[
+        \log \dfrac{P(x)}{Q_\theta(x)}
+    \right] \\
+    &amp;= \mathbb E_{x\sim P} \log P(x) - \mathbb E_{x\sim P}\log Q_\theta(x)\\
+    &amp;= \int dP\, \log P - \int dP\, \log Q
+\end{aligned}
+\]</span> For more interesting properties of KL divergence, see <a href="https://nlyu1.github.io/classical-info-theory/kullback-leibler-divergence.html">these notes</a>. From a SGD perspective, minimizing KL is equivalent to maximizing likelihood when empirical samples are i.i.d from <span class="math inline">\(P\)</span>: <span class="math display">\[
+    \nabla_\theta \, \mathrm{KL}(P\|Q_\theta) = -\nabla_\theta \mathbb E_{x\sim P} \, \log Q_\theta(x)
+\]</span></p>
+</section>
+<section id="gradients-on-manifolds" class="level3">
+<h3 class="anchored" data-anchor-id="gradients-on-manifolds">Gradients on manifolds</h3>
+<p>I like to interpret differential geometry as the “lifting” of Euclidean constructs into locally Euclidean manifolds. Gradients are no different. In Euclidean space, given a curve <span class="math inline">\(\gamma: [0, 1]\to \R^n\)</span> and a linear function <span class="math inline">\(f:\R^n\to \R\)</span>, the chain rule yields <span class="math display">\[
+    \df d {dt} f(\gamma(t)) = \dot \gamma(t) \cdot \nabla\big|_{\gamma(t)} f
+\]</span> Lifting the inner product to the manifold metric, we can use this to define gradients on manifolds:</p>
+<p>:::definition[Wasserstein gradients]</p>
+<p>Given a scalar function <span class="math inline">\(f:\mathcal W_2\to \R\)</span>, the gradient of <span class="math inline">\(f\)</span> at the point <span class="math inline">\(P\in \mathcal W_2\)</span> is the unique tangent vector <span class="math inline">\(v=\mathrm{grad}_W f(P)\)</span> such that, for any curve <span class="math inline">\(\gamma(t)\)</span> with <span class="math inline">\(\gamma(0)=P\)</span>, we have <span class="math display">\[
+    \dfrac{d}{dt} f(\gamma(t)) = \la \dot \gamma(t), v\ra_W = \mathbb E_P \la \dot \gamma(t), v\ra
+\]</span> where <span class="math inline">\(\la\cdot, \cdot\ra_W\)</span> is our familiar Wasserstein metric on <span class="math inline">\(\mathcal W_2\)</span>, and <span class="math inline">\(\la\cdot, \cdot\ra\)</span> in the second equality is the familiar Euclidean metric, after we expanded the definition of the Wasserstein metric. :::</p>
+<p>Now, we’re equipped to state a major result in <a href="https://www.math.toronto.edu/mccann/assignments/477/Otto01.pdf">Otto calculus</a>. We’ll prove it shortly.</p>
+<p>:::theorem[fundamental theorem of Otto calculus] Given a probability functional <span class="math inline">\(\mathcal F:\mathcal W_2\to \R\)</span>, its Wasserstein gradient can be computed as <span class="math display">\[
+    \mathrm{grad}_W \mathcal F(P) = \nabla_x \left(\dfrac{\delta \mathcal F}{\delta P}\right)
+\]</span> The theorem should look fairly intuitive: on the RHS, we compute the pointwise derivative of <span class="math inline">\(\mathcal F\)</span> w.r.t. the point density at <span class="math inline">\(P(x)\)</span> and use this as the potential. The theorem tells us that the direction of steepest <span class="math inline">\(\mathcal F\)</span>-ascent is the gradient of this (functional derivative) potential. :::</p>
+<p>Several remarks are in order: 1. Despite appearing like a definition, this is a <em>theorem</em>! The general differential-geometry gradient exists, but its general computation does not usually admit such easy form. 2. The expression <span class="math inline">\(\dfrac{\delta\mathcal F}{\delta P}: \mathbb R^n\to \R\)</span> is <strong>a scalar function on the sample space</strong> that’s usually known as the <strong>functional derivative</strong>. Its values are the point-wise derivatives of <span class="math inline">\(F\)</span> w.r.t. <span class="math inline">\(P\)</span>.</p>
+<p>Again, the functional derivative <strong>is a scalar function on the sample space</strong>. Its definition is best demonstrated by two useful examples:</p>
+<div class="example">
+<p>For the entropy functional <span class="math inline">\(\mathcal H(P) = -\int dP\, \log P = -\int P(x) \log P(x) dx\)</span>, applying the product rule yields: <span class="math display">\[
+    \dfrac{\delta \mathcal H(P)}{\delta P}(x) = -(\log P(x) + 1)
+\]</span></p>
+<p>The KL functional <span class="math inline">\(\mathrm{KL}(P\|Q_\theta)\)</span> has two arguments: <span class="math display">\[
+    \mathrm{KL}(P\|Q_\theta) = \int dP\, \log P - \int dP \log Q_\theta
+\]</span></p>
+<p>Taking the functional derivative w.r.t. the data distribution <span class="math inline">\(P\)</span>, we treat <span class="math inline">\(Q_\theta\)</span> as a constant: <span class="math display">\[
+\begin{aligned}
+    \dfrac{\delta \mathrm{KL}(P\|Q_\theta)}{\delta P}(x)
+    &amp;= \pd P\Big( P \log P - P \log Q_\theta \Big) \\
+    &amp;= \log P(x) - \log Q_\theta(x) + 1
+\end{aligned}
+\]</span> Similarly w.r.t. <span class="math inline">\(Q_\theta\)</span>: <span class="math display">\[
+\begin{aligned}
+    \dfrac{\delta \mathrm{KL}(P\|Q_\theta)}{\delta Q_\theta}(x)
+    &amp;= \partial_{Q_\theta} \Big( - P \log Q_\theta \Big) = -\dfrac{P(x)}{Q_\theta(x)}
+\end{aligned}
+\]</span></p>
+</div>
+<p>:::example[applying Otto’s theorem to entropy]</p>
+<p>From above, <span class="math inline">\(\frac{\delta \mathcal H}{\delta P} = -(\log P + 1)\)</span>. Applying the theorem: <span class="math display">\[
+    \mrm{grad}_W \mathcal H(P) = \nabla_x\left(-\log P - 1\right) = -\nabla \log P
+\]</span> The Wasserstein gradient of entropy is the <strong>negative score</strong>. Gradient ascent on entropy has velocity <span class="math inline">\(v = \mrm{grad}_W\mathcal H = -\nabla \log P\)</span>. Plugging into the continuity equation: <span class="math display">\[
+    \pd t P = \nabla \cdot(P\,\nabla \log P) = \Delta P
+\]</span> This is the <strong>heat equation</strong>: heat diffusion is Wasserstein gradient ascent of entropy. :::</p>
+<p>:::example[applying Otto’s theorem to forward KL]</p>
+<p>Apply to <span class="math inline">\(Q_\theta\)</span> in <span class="math inline">\(\mrm{KL}(P\|Q_\theta)\)</span>. From above, <span class="math inline">\(\frac{\delta\mrm{KL}(P\|Q_\theta)}{\delta Q_\theta} = -P/Q_\theta\)</span>. Applying the theorem: <span class="math display">\[
+\begin{aligned}
+    \mrm{grad}_W \mrm{KL}(P\|Q_\theta)\big|_{Q_\theta}
+    = \nabla_x\!\left(-\frac{P}{Q_\theta}\right)
+\end{aligned}
+\]</span> Gradient descent velocity: <span class="math inline">\(v = \nabla_x(P/Q_\theta)\)</span>. :::</p>
+<p><span id="ex-otto-reverse-kl"></span> :::example[applying Otto’s theorem to reverse KL]</p>
+<p>Apply to <span class="math inline">\(Q_\theta\)</span> in <span class="math inline">\(\mrm{KL}(Q_\theta\|P)\)</span>. The functional derivative is <span class="math display">\[
+    \frac{\delta\mrm{KL}(Q_\theta\|P)}{\delta Q_\theta} = \log Q_\theta - \log P + 1
+\]</span> Applying the theorem: <span class="math display">\[
+\begin{equation}
+    \mrm{grad}_W \mrm{KL}(Q_\theta\|P)\big|_{Q_\theta} = \nabla \log Q_\theta - \nabla \log P = s_{Q_\theta} - s_P
+\label{eq:reverse-kl-gradient}
+\end{equation}
+\]</span> The Wasserstein gradient is a <strong>score difference</strong>. Gradient descent velocity: <span class="math inline">\(v = s_P - s_{Q_\theta}\)</span>. Particles flow in the direction where the data score exceeds the model score. This is exactly the drifting field’s structure — but it requires <span class="math inline">\(\nabla \log P\)</span>, the data score. With empirical samples (Diracs), this is undefined: the <strong>Dirac trap</strong> that we return to in <a href="#gaussian-kernel-smoothing-implements-reverse-kl">the next section</a>. :::</p>
+</section>
+<section id="proving-ottos-theorem" class="level3">
+<h3 class="anchored" data-anchor-id="proving-ottos-theorem">Proving Otto’s theorem</h3>
+<p>We need to show that <span class="math inline">\(v = \nabla_x \frac{\delta \mathcal F}{\delta P}\)</span> satisfies the gradient definition for all test tangent vectors <span class="math inline">\(u = \nabla\psi \in T_P\mathcal W_2\)</span>.</p>
+<p>By the gradient definition, <span class="math inline">\(v = \mrm{grad}_W\mathcal F\)</span> is the unique tangent vector satisfying <span class="math display">\[
+    \df d{d\epsilon}\mathcal F(P + \epsilon\,\delta P)\Big|_{\epsilon=0} = \la u, v\ra_W = \int \la u, v\ra\, dP
+\]</span> for all test velocities <span class="math inline">\(u\)</span>, where <span class="math inline">\(\delta P\)</span> is the perturbation of <span class="math inline">\(P\)</span> induced by flowing along <span class="math inline">\(u\)</span>. By the continuity equation, an infinitesimal flow along <span class="math inline">\(u\)</span> produces perturbation <span class="math inline">\(\delta P = \pd t P= -\nabla \cdot (P\, u)\)</span>. By the definition of the functional derivative, <span class="math display">\[
+    \df d{d\epsilon}\mathcal F(P + \epsilon\,\delta P)\Big|_{\epsilon=0} \equiv \int \frac{\delta \mathcal F}{\delta P}\,\delta P\, dx = -\int \frac{\delta \mathcal F}{\delta P}\,\nabla\cdot(P\, u)\, dx
+\]</span> Applying the divergence theorem (the boundary term vanishes since <span class="math inline">\(P\)</span> and <span class="math inline">\(u\)</span> decay at infinity): <span class="math display">\[
+\begin{aligned}
+    &amp;= \cancel{-\int \nabla \cdot \!\left[\frac{\delta \mathcal F}{\delta P}\, P\, u\right] dx} \;+\; \int u\cdot \nabla \left(\frac{\delta \mathcal F}{\delta P}\right)\, dP \\
+    &amp;= \int \la u,\, \nabla\frac{\delta \mathcal F}{\delta P}\ra\, dP \implies \mathrm{grad}_W(\mathcal F) := v = \nabla \left(\dfrac{\delta \mathcal F}{\delta P}\right) \,\, \square
+\end{aligned}
+\]</span></p>
+</section>
+</section>
+<section id="statistical-interpretation-of-drifting" class="level2">
+<h2 class="anchored" data-anchor-id="statistical-interpretation-of-drifting">Statistical interpretation of drifting</h2>
+<p>We now connect the drifting field to Wasserstein gradient flow and ask: what functional is being minimized, and what does this have to do with maximum likelihood?</p>
+<p>Recall the antisymmetry property <span class="math inline">\(V_{p,q} = -V_{q,p}\)</span>. If you have carefully followed through all of the previous examples, this should remind you of the Wasserstein gradient of reverse KL <span class="math inline">\(\eqref{eq:reverse-kl-gradient}\)</span>. Let’s explore this.</p>
+<section id="gaussian-kernel-smoothing-implements-reverse-kl" class="level3">
+<h3 class="anchored" data-anchor-id="gaussian-kernel-smoothing-implements-reverse-kl">Gaussian kernel smoothing implements Reverse KL</h3>
+<p>The reverse KL example above gave us <span class="math inline">\(v(x) = \nabla \log p(x) - \nabla \log q_\theta(x)\)</span> — a score difference matching the drifting field’s attraction-minus-repulsion structure. But with empirical Diracs, <span class="math inline">\(\nabla \log p\)</span> is undefined: the <strong>Dirac trap</strong>. Diffusion models resolve this by convolving with noise. Drifting models resolve it differently — via implicit <strong>kernel density estimation</strong> (KDE). Let’s see how this works; define the KDE-smoothed distributions:</p>
+<p>:::definition[KDE-smoothed distributions] Given empirical distributions <span class="math inline">\(p, q\)</span> and the Gaussian kernel <span class="math inline">\(k(x, y) = \exp\!\left(-\frac{\|x-y\|^2}{2\tau^2}\right)\)</span>, define <span class="math display">\[
+    \tilde p(x) = \E_{y^+\sim p}[k(x, y^+)], \quad \tilde q(x) = \E_{y^-\sim q}[k(x, y^-)]
+\]</span> Note that <span class="math inline">\(\tilde p(x) = Z_p(x)\)</span> and <span class="math inline">\(\tilde q(x) = Z_q(x)\)</span>. The per-point normalization constants in the drifting field <strong>are</strong> the KDE densities. :::</p>
+<p>Now consider the reverse KL between the smoothed distributions: <span class="math inline">\(\mathcal F(\tilde q) = \mrm{KL}(\tilde q \| \tilde p)\)</span>. From the <a href="#applying-ottos-theorem-to-reverse-kl">reverse KL example</a> above, the Wasserstein gradient descent velocity is: <span class="math display">\[
+    v(x) = \nabla_x \log \tilde p(x) - \nabla_x \log \tilde q(x)
+\]</span></p>
+<p>We expand each score using the log-derivative trick <span class="math inline">\(\nabla \log f = \nabla f / f\)</span>. For the smoothed data score: <span class="math display">\[
+\begin{aligned}
+    \nabla_x \log \tilde p(x)
+    &amp;= \frac{1}{\tilde p(x)}\nabla_x \E_{y^+\sim p}[k(x, y^+)]
+    = \frac{1}{Z_p(x)}\E_{y^+\sim p}[\nabla_x k(x, y^+)]
+\end{aligned}
+\]</span> For the Gaussian kernel, <span class="math inline">\(\nabla_x k(x, y) = k(x, y)\frac{y - x}{\tau^2}\)</span>. Absorbing the <span class="math inline">\(1/\tau^2\)</span> into the learning rate: <span class="math display">\[
+    \nabla_x \log \tilde p(x) = \frac{1}{Z_p(x)}\E_{y^+\sim p}\!\left[k(x, y^+)(y^+ - x)\right] = V_p^+(x)
+\]</span> This is precisely the data attraction field. The same calculation with <span class="math inline">\(q\)</span> yields <span class="math inline">\(\nabla_x \log \tilde q(x) = V_q^-(x)\)</span>, the model repulsion field. Therefore:</p>
+<p>:::theorem[drifting field as Wasserstein gradient] The canonical drifting field is the negative Wasserstein gradient of the reverse KL between KDE-smoothed distributions: <span class="math display">\[
+    V_{p,q} = \nabla \log \tilde p - \nabla \log \tilde q = V_p^+ - V_q^- = -\mrm{grad}_W\, \mrm{KL}(\tilde q \| \tilde p)
+\]</span> Each training step executes the Jacobian pullback <span class="math inline">\(J^T_\theta g\)</span> of the Wasserstein gradient descent <span class="math inline">\(g\)</span> w.r.t. <span class="math inline">\(\mrm{KL}(\tilde q \| \tilde p)\)</span>. :::</p>
+<p>:::remark[the Laplace deviation] The derivation above assumes a Gaussian kernel throughout. The actual paper specifies a Laplace kernel <span class="math inline">\(k(x,y) = \exp(-\|x-y\|/\tau)\)</span>, whose true spatial gradient is <span class="math display">\[
+    \nabla_x k_{\mrm{Lap}}(x, y) = k(x, y)\frac{y - x}{\tau\|x - y\|}
+\]</span> This is a <strong>unit-direction</strong> pull of constant magnitude <span class="math inline">\(1/\tau\)</span>. The paper’s drifting field uses <strong>Laplace scalar weights</strong> <span class="math inline">\(k_{\mrm{Lap}}(x, y^+)\)</span> but <strong>Gaussian vector gradients</strong> <span class="math inline">\((y^+ - x)\)</span> — a deliberate hybrid. This might have been an empirically successful choice because Laplace weights have heavier tails than Gaussian, preventing kernel starvation in high dimensions. :::</p>
+</section>
+<section id="implementing-forward-kl" class="level3">
+<h3 class="anchored" data-anchor-id="implementing-forward-kl">Implementing forward KL</h3>
+<p>The reverse KL functional <span class="math inline">\(\mrm{KL}(\tilde q \| \tilde p)\)</span> is <strong>mode-seeking</strong>: particles collapse into well-defined modes and ignore the rest, because the cost of generating samples where data density is zero is infinite. Under the maximum likelihood estimate principle, we typically prefer <strong>forward KL</strong> <span class="math inline">\(\mrm{KL}(\tilde p \| \tilde q)\)</span>, which is <strong>mass-covering</strong>: the model is forced to stretch over the entire support of the data.</p>
+<p>Apply Otto calculus to <span class="math inline">\(\mathcal F(\tilde q) = \mrm{KL}(\tilde p \| \tilde q)\)</span>. The functional derivative w.r.t. the flowing model <span class="math inline">\(\tilde q\)</span> is <span class="math inline">\(\frac{\delta}{\delta \tilde q}\mrm{KL}(\tilde p \| \tilde q) = -\tilde p / \tilde q\)</span> (from the <a href="#applying-ottos-theorem-to-forward-kl">forward KL example</a> above). The Wasserstein gradient descent velocity is: <span class="math display">\[
+    v_{\mrm{MLE}}(x) = \nabla_x \frac{\tilde p(x)}{\tilde q(x)}
+    = \frac{\tilde q\,\nabla_x \tilde p - \tilde p\,\nabla_x \tilde q}{\tilde q^2}
+    = \frac{\tilde p(x)}{\tilde q(x)}\Big(\nabla_x \log \tilde p - \nabla_x \log \tilde q\Big)
+\]</span> The term in parentheses is exactly the reverse KL velocity — the canonical drifting field <span class="math inline">\(V_{p,q}\)</span>:</p>
+<p>:::theorem[forward KL via density ratio scaling] <span class="math display">\[
+    v_{\mrm{MLE}}(x) = \frac{\tilde p(x)}{\tilde q(x)} \cdot V_{p,q}(x) = \frac{Z_p(x)}{Z_q(x)} \cdot V_{p,q}(x)
+\]</span> Since <span class="math inline">\(Z_p, Z_q\)</span> are already computed to evaluate the drifting field, the density ratio is <strong>free</strong>. :::</p>
+</section>
+<section id="proposition-maximum-likelihood-drifting" class="level3">
+<h3 class="anchored" data-anchor-id="proposition-maximum-likelihood-drifting">Proposition: maximum likelihood drifting</h3>
+<p>Combining the results above, we can state concretely what a maximum-likelihood variant of drifting looks like.</p>
+<p>:::theorem[MLE drifting field] The Wasserstein gradient descent velocity for the forward KL <span class="math inline">\(\mrm{KL}(\tilde p \| \tilde q)\)</span> between KDE-smoothed distributions, using the Gaussian kernel, is <span class="math display">\[
+    V_{\mrm{MLE}}(x) = \frac{Z_p(x)}{Z_q(x)} \cdot V_{p,q}^{\mrm{Gauss}}(x)
+\]</span> where <span class="math inline">\(V_{p,q}^{\mrm{Gauss}}\)</span> is the canonical drifting field evaluated with Gaussian kernel weights. :::</p>
+<p>What does this mean in practice? The changes to the existing training protocol are minimal. Here is the current Deng et al.&nbsp;procedure:</p>
+<p><strong>Existing protocol (Deng et al.):</strong> 1. Sample a batch of data points <span class="math inline">\(\{y_i^+\} \sim p\)</span> and generate model outputs <span class="math inline">\(\{x_j\} = \{f_\theta(\epsilon_j)\}\)</span>. 2. For each model sample <span class="math inline">\(x_j\)</span>, compute the Laplace kernel values <span class="math inline">\(k(x_j, y_i^+)\)</span> and <span class="math inline">\(k(x_j, x_{j'})\)</span> against all data and model samples respectively. Normalize to obtain <span class="math inline">\(Z_p(x_j)\)</span>, <span class="math inline">\(Z_q(x_j)\)</span>, and evaluate the drifting field <span class="math inline">\(V_{p,q}(x_j) = V_p^+(x_j) - V_q^-(x_j)\)</span>. 3. Form drifted targets <span class="math inline">\(\hat x_j = x_j + V_{p,q}(x_j)\)</span>. 4. Minimize <span class="math inline">\(\|f_\theta(\epsilon_j) - \mathrm{stopgrad}(\hat x_j)\|^2\)</span>.</p>
+<p><strong>MLE modification (two changes):</strong> 1. Same. 2. Same, but replace the <strong>Laplace</strong> kernel with the <strong>Gaussian</strong> kernel. 3. Form drifted targets <span class="math inline">\(\hat x_j = x_j + \frac{Z_p(x_j)}{Z_q(x_j)} \cdot V_{p,q}(x_j)\)</span>. That is, scale the drifting field by the density ratio. 4. Same.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 22%">
+<col style="width: 39%">
+<col style="width: 37%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th><strong>Deng et al.</strong></th>
+<th><strong>MLE modification</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Kernel</td>
+<td>Laplace <span class="math inline">\(e^{-\|x-y\|/\tau}\)</span></td>
+<td>Gaussian <span class="math inline">\(e^{-\|x-y\|^2/2\tau^2}\)</span></td>
+</tr>
+<tr class="even">
+<td>Drifting field</td>
+<td><span class="math inline">\(V_{p,q}\)</span></td>
+<td><span class="math inline">\(\frac{Z_p}{Z_q} \cdot V_{p,q}\)</span></td>
+</tr>
+<tr class="odd">
+<td>Antisymmetric?</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td>Functional minimized</td>
+<td><span class="math inline">\(\approx\)</span> Reverse KL (mode-seeking)</td>
+<td>Forward KL (mass-covering, MLE)</td>
+</tr>
+</tbody>
+</table>
+<p>Several qualitative differences are worth noting:</p>
+<p><strong>Antisymmetry is lost.</strong> The density ratio breaks the symmetry: <span class="math inline">\(\frac{Z_p}{Z_q} V_{p,q} \neq -\frac{Z_q}{Z_p} V_{q,p}\)</span> in general. But equilibrium is preserved — when <span class="math inline">\(p = q\)</span>, we have <span class="math inline">\(Z_p = Z_q\)</span> and <span class="math inline">\(V_{p,q} = 0\)</span>, so the field still vanishes.</p>
+<p><strong>Mode-covering vs mode-seeking.</strong> This is the main qualitative shift. Forward KL penalizes the model for assigning low density where data is present: dropped modes are actively hunted. The density ratio <span class="math inline">\(Z_p/Z_q\)</span> acts as a spatially varying learning rate — particles in under-represented regions (<span class="math inline">\(Z_q\)</span> small, <span class="math inline">\(Z_p\)</span> large) take larger steps, while particles in over-crowded regions slow down.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

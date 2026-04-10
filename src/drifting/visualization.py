@@ -15,6 +15,7 @@ class RegularGridConfig(BaseConfig):
     y_range: tuple[float, float]
     num_points_per_axis: int
     quiver_stride: int
+    model_quiver_stride: int
 
     @model_validator(mode="after")
     def _validate_config(self) -> "RegularGridConfig":
@@ -26,6 +27,8 @@ class RegularGridConfig(BaseConfig):
             raise ValueError("num_points_per_axis must exceed 1")
         if self.quiver_stride <= 0:
             raise ValueError("quiver_stride must be positive")
+        if self.model_quiver_stride <= 0:
+            raise ValueError("model_quiver_stride must be positive")
         return self
 
 
@@ -69,12 +72,15 @@ def make_drifting_figure(
     *,
     data_samples: Float[Tensor, "data 2"],
     model_samples: Float[Tensor, "model 2"],
+    representative_model_samples: Float[Tensor, "rep 2"],
     grid_x: Float[Tensor, "grid_x grid_y"],
     grid_y: Float[Tensor, "grid_x grid_y"],
     model_density: Float[Tensor, "grid_x grid_y"],
-    vector_field: Float[Tensor, "grid_x grid_y 2"],
+    grid_vector_field: Float[Tensor, "grid_x grid_y 2"],
+    representative_model_field: Float[Tensor, "rep 2"],
     quiver_stride: int,
-    title: str,
+    grid_arrow_scale_multiplier: float = 2.5,
+    sample_arrow_scale_multiplier: float = 1.0,
 ) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
@@ -87,28 +93,52 @@ def make_drifting_figure(
             line=dict(color="royalblue", width=2),
             showscale=False,
             opacity=0.9,
+            hoverinfo="skip",
         )
     )
     quiver_x = grid_x[::quiver_stride, ::quiver_stride].reshape(-1).detach().cpu()
     quiver_y = grid_y[::quiver_stride, ::quiver_stride].reshape(-1).detach().cpu()
     quiver_u = (
-        vector_field[::quiver_stride, ::quiver_stride, 0].reshape(-1).detach().cpu()
+        grid_vector_field[::quiver_stride, ::quiver_stride, 0]
+        .reshape(-1)
+        .detach()
+        .cpu()
+        * grid_arrow_scale_multiplier
     )
     quiver_v = (
-        vector_field[::quiver_stride, ::quiver_stride, 1].reshape(-1).detach().cpu()
+        grid_vector_field[::quiver_stride, ::quiver_stride, 1]
+        .reshape(-1)
+        .detach()
+        .cpu()
+        * grid_arrow_scale_multiplier
     )
     quiver = ff.create_quiver(
         x=quiver_x,
         y=quiver_y,
         u=quiver_u,
         v=quiver_v,
-        scale=0.25,
-        arrow_scale=0.3,
-        line=dict(color="seagreen", width=1),
-        name="reverse-KL drift",
+        scale=0.35,
+        arrow_scale=0.45,
+        line=dict(color="rgba(46, 139, 87, 0.85)", width=1.2),
+        name="grid drift",
     )
     for trace in quiver.data:
         trace.showlegend = False
+        trace.hoverinfo = "skip"
+        fig.add_trace(trace)
+    sample_quiver = ff.create_quiver(
+        x=representative_model_samples[:, 0].detach().cpu(),
+        y=representative_model_samples[:, 1].detach().cpu(),
+        u=representative_model_field[:, 0].detach().cpu() * sample_arrow_scale_multiplier,
+        v=representative_model_field[:, 1].detach().cpu() * sample_arrow_scale_multiplier,
+        scale=0.25,
+        arrow_scale=0.3,
+        line=dict(color="rgba(17, 24, 39, 0.65)", width=1.0),
+        name="model drift",
+    )
+    for trace in sample_quiver.data:
+        trace.showlegend = False
+        trace.hoverinfo = "skip"
         fig.add_trace(trace)
     fig.add_trace(
         go.Scatter(
@@ -117,6 +147,7 @@ def make_drifting_figure(
             mode="markers",
             name="data",
             marker=dict(size=5, color="rgba(208, 51, 58, 0.35)"),
+            hoverinfo="skip",
         )
     )
     fig.add_trace(
@@ -126,15 +157,36 @@ def make_drifting_figure(
             mode="markers",
             name="model",
             marker=dict(size=5, color="rgba(17, 24, 39, 0.45)"),
+            hoverinfo="skip",
         )
     )
+    x_range = (
+        float(grid_x.min().item()),
+        float(grid_x.max().item()),
+    )
+    y_range = (
+        float(grid_y.min().item()),
+        float(grid_y.max().item()),
+    )
     fig.update_layout(
-        title=title,
         template="plotly_white",
         width=900,
         height=900,
-        xaxis=dict(title="x", scaleanchor="y"),
-        yaxis=dict(title="y"),
+        showlegend=False,
+        xaxis=dict(
+            visible=False,
+            showgrid=False,
+            zeroline=False,
+            range=list(x_range),
+            scaleanchor="y",
+        ),
+        yaxis=dict(
+            visible=False,
+            showgrid=False,
+            zeroline=False,
+            range=list(y_range),
+        ),
+        margin=dict(l=10, r=10, t=10, b=10),
     )
     return fig
 

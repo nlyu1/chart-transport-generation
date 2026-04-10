@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>tentative-architecture – Diffusive Latent Generation</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-719edf7fba01f5a886ffab10bbd48302.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">Diffusive Latent Generation</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#autoresearch-agent-handbook" id="toc-autoresearch-agent-handbook" class="nav-link active" data-scroll-target="#autoresearch-agent-handbook">Autoresearch agent handbook</a>
+  <ul class="collapse">
+  <li><a href="#workflow-details" id="toc-workflow-details" class="nav-link" data-scroll-target="#workflow-details">Workflow details</a>
+  <ul class="collapse">
+  <li><a href="#metastudy-architect" id="toc-metastudy-architect" class="nav-link" data-scroll-target="#metastudy-architect">1. Metastudy architect</a></li>
+  <li><a href="#metastudy-planner" id="toc-metastudy-planner" class="nav-link" data-scroll-target="#metastudy-planner">2. Metastudy planner</a></li>
+  <li><a href="#metastudy-executor" id="toc-metastudy-executor" class="nav-link" data-scroll-target="#metastudy-executor">3. Metastudy executor</a></li>
+  <li><a href="#metastudy-reviewer" id="toc-metastudy-reviewer" class="nav-link" data-scroll-target="#metastudy-reviewer">4. Metastudy reviewer</a></li>
+  <li><a href="#study-planner" id="toc-study-planner" class="nav-link" data-scroll-target="#study-planner">5. Study planner</a></li>
+  <li><a href="#study-executor" id="toc-study-executor" class="nav-link" data-scroll-target="#study-executor">6. Study executor</a></li>
+  <li><a href="#study-reviewer" id="toc-study-reviewer" class="nav-link" data-scroll-target="#study-reviewer">7. Study reviewer</a></li>
+  <li><a href="#substudy-executor" id="toc-substudy-executor" class="nav-link" data-scroll-target="#substudy-executor">8. Substudy executor</a></li>
+  <li><a href="#substudy-reviewer" id="toc-substudy-reviewer" class="nav-link" data-scroll-target="#substudy-reviewer">9. Substudy reviewer</a></li>
+  <li><a href="#metastudy-layout" id="toc-metastudy-layout" class="nav-link" data-scroll-target="#metastudy-layout">Metastudy layout</a></li>
+  </ul></li>
+  <li><a href="#holistic-workflow" id="toc-holistic-workflow" class="nav-link" data-scroll-target="#holistic-workflow">Holistic workflow</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+
+
+
+
+<section id="autoresearch-agent-handbook" class="level1">
+<h1>Autoresearch agent handbook</h1>
+<p>This is a research repository with strict rules for orchestration and role delegation. The user specifies metastudies with clear top-level objectives, and agents plan and design studies and substudies. The levels of abstraction, and role interactions, are detailed as follows:</p>
+<ul>
+<li><strong>Metastudies</strong>: top-level objectives.
+<ul>
+<li>Involved agents: metastudy executor reviewer, and planner</li>
+</ul></li>
+<li><strong>Studies</strong>: answering specific questions, or exploring a specific direction.
+<ul>
+<li>We make this semantic separation because study inputs are “a specific semantic, or scientific, question that needs to be answered”, while a substudy is a particular engineering experiment which needs to be done, with semantic output.</li>
+</ul></li>
+<li><strong>Substudies</strong>: one, or a closely semantically aligned list, of experiments or implementations which need to be done.</li>
+</ul>
+<section id="workflow-details" class="level2">
+<h2 class="anchored" data-anchor-id="workflow-details">Workflow details</h2>
+<p>Here, we adopt a programmatic specification of the workflow and clearly define the pieces of data and information-processing nodes. Declarations below.</p>
+<p>Information processing nodes:</p>
+<ol type="1">
+<li>Metastudy architect</li>
+<li>Metastudy planner</li>
+<li>Metastudy executor</li>
+<li>Metastudy reviewer</li>
+<li>Study planner</li>
+<li>Study executor</li>
+<li>Study reviewer</li>
+<li>Substudy executor</li>
+<li>Substudy reviewer</li>
+</ol>
+<p>Passed data:</p>
+<ol type="1">
+<li>Metastudy <code>spec</code>, <code>plan</code>, <code>state</code>, <code>audit</code>. Artifacts belong in the metastudy folder.</li>
+<li>For each study, study <code>plan</code>, <code>state</code>, <code>audit</code>. Artifacts belong in the study subfolder.</li>
+<li>For each substudy, substudy <code>state</code>, <code>audit</code>. Artifacts belong in in the substudy sub-subfolder.</li>
+</ol>
+<section id="metastudy-architect" class="level3">
+<h3 class="anchored" data-anchor-id="metastudy-architect">1. Metastudy architect</h3>
+<section id="semantic-policy" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy">Semantic policy</h4>
+<ul>
+<li>Reads: user-provided objective material, relevant theory/codebase context, and any existing metastudy artifacts when revising.</li>
+<li>Sharpen the top-level research objective into a metastudy-level semantic contract.</li>
+<li>Iterate the objective with progressive sharpening and proposed questions until the user explicitly approves.</li>
+</ul>
+<p>Read the theory codebase and existing metastudy results / artifacts / status report to contextualize; identify ambiguities, hidden assumptions, non-goals, and success criteria; iterate with the user until the metastudy objective is crisp enough to drive downstream planning.</p>
+<ul>
+<li>Output meaning: the metastudy <code>spec</code> should be the human-readable source of truth for what the metastudy is trying to answer and what counts as answering it.</li>
+</ul>
+</section>
+<section id="interactions" class="level4">
+<h4 class="anchored" data-anchor-id="interactions">Interactions</h4>
+<ul>
+<li><p>Interacts with: user.</p></li>
+<li><p>Boundary: the metastudy architect is not responsible for decomposition, scheduling, or operational book-keeping.</p></li>
+</ul>
+</section>
+<section id="side-effects" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects">Side effects</h4>
+<ul>
+<li>Creates or revises the metastudy <code>spec</code> markdown file.</li>
+<li>Does not write metastudy <code>plan</code>, <code>state</code>, or <code>audit</code>.</li>
+<li>Hands off only through the metastudy <code>spec</code>.</li>
+</ul>
+</section>
+</section>
+<section id="metastudy-planner" class="level3">
+<h3 class="anchored" data-anchor-id="metastudy-planner">2. Metastudy planner</h3>
+<section id="semantic-policy-1" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-1">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>spec</code>, metastudy <code>state</code>, and current metastudy <code>plan</code>.</li>
+<li>Convert the metastudy-level semantic contract into an explicit list of studies that together should answer the metastudy objective.</li>
+<li>Output meaning: the metastudy <code>plan</code> is the current decomposition of the metastudy into child studies, together with the semantic rationale for why those studies are the right next set of questions or directions.</li>
+<li>The planner should work at the study level of abstraction, not at the substudy or experiment-design level.</li>
+<li>The planner may refine an existing plan in light of current metastudy state by proposing studies, but <strong>should not directly mutate metastudy state</strong> itself.</li>
+</ul>
+</section>
+<section id="interactions-1" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-1">Interactions</h4>
+<ul>
+<li><p>Interacts with: metastudy executor.</p></li>
+<li><p>Boundary: the metastudy planner does not execute studies or judge completion.</p></li>
+</ul>
+</section>
+<section id="side-effects-1" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-1">Side effects</h4>
+<ul>
+<li>Creates or revises the metastudy <code>plan</code> markdown file.</li>
+<li>Does not write metastudy <code>state</code> or metastudy <code>audit</code>. Does not populate or create metastudy artifacts.</li>
+<li>Hands off only through the metastudy <code>plan</code> and any newly materialized study specs.</li>
+</ul>
+</section>
+</section>
+<section id="metastudy-executor" class="level3">
+<h3 class="anchored" data-anchor-id="metastudy-executor">3. Metastudy executor</h3>
+<section id="semantic-policy-2" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-2">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>spec</code>, metastudy <code>plan</code>, metastudy <code>state</code>, metastudy <code>audit</code>, and child study <code>state</code> artifacts.</li>
+<li>Maintain the metastudy as a long-lived stateful process which keeps driving the study loop until the metastudy-level question is either answered or explicitly sent back for revision.</li>
+<li>Output meaning: the metastudy <code>state</code> is the operational source of truth for where the metastudy currently stands, which studies have returned, what the current high-level findings are, and what the next action should be.</li>
+<li>The executor is the only metastudy-level node which should translate reviewer directives back into ongoing process state.</li>
+</ul>
+</section>
+<section id="interactions-2" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-2">Interactions</h4>
+<ul>
+<li><p>Interacts with: metastudy planner, study executor, and metastudy reviewer.</p></li>
+<li><p>Boundary: the metastudy executor does not define the metastudy objective, does not decompose the metastudy semantically on its own, and does not make the final judgement of pass versus revision.</p></li>
+</ul>
+</section>
+<section id="side-effects-2" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-2">Side effects</h4>
+<ul>
+<li>Creates or revises the metastudy <code>state</code> markdown file.</li>
+<li>Initializes metastudy <code>state</code> when entering the driving loop if it does not yet exist.</li>
+<li>Invokes the metastudy planner when the current metastudy <code>plan</code> is missing, stale, or insufficient for the next pass through the studies.</li>
+<li>Invokes the study executor sequentially over the studies implied by the current metastudy <code>plan</code>.</li>
+<li>Updates metastudy <code>state</code> after each child study returns, so that the metastudy can be resumed without needing to inspect child audits.</li>
+<li>Invokes the metastudy reviewer after the relevant child studies for the current plan pass have returned.</li>
+<li>Reads metastudy <code>audit</code> and translates its directives into updated metastudy <code>state</code>.</li>
+<li>Does not write metastudy <code>spec</code>, metastudy <code>plan</code>, or metastudy <code>audit</code>.</li>
+</ul>
+</section>
+</section>
+<section id="metastudy-reviewer" class="level3">
+<h3 class="anchored" data-anchor-id="metastudy-reviewer">4. Metastudy reviewer</h3>
+<section id="semantic-policy-3" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-3">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>spec</code>, metastudy <code>plan</code>, metastudy <code>state</code>, and child study <code>state</code> artifacts.</li>
+<li>Judge whether the metastudy, at its current level of evidence and synthesis, has actually answered the top-level objective well enough to pass.</li>
+<li>Output meaning: the metastudy <code>audit</code> is the metastudy-level judgement artifact. It should clearly state whether the metastudy passes or requires revision, and why.</li>
+<li>The reviewer should reason from the metastudy objective and the accumulated study states, not from child audits. The metastudy should depend on study states as the upward-facing semantic summaries.</li>
+<li>The reviewer should be strict. It should not grant pass merely because all planned studies completed; it should evaluate whether the metastudy objective was in fact answered and push for modifications or more brainstorming as needed.</li>
+<li>If something is not explained concisely with standalone, compelling references (e.g.&nbsp;graphics) and numbers, then it’s not ready.</li>
+<li>Check that metadata human deliverables are standalone and provides enough context.</li>
+</ul>
+</section>
+<section id="interactions-3" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-3">Interactions</h4>
+<ul>
+<li><p>Interacts with: metastudy executor.</p></li>
+<li><p>Boundary: the reviewer does not update metastudy <code>state</code>, does not revise the plan itself, and does not execute any further studies.</p></li>
+</ul>
+</section>
+<section id="side-effects-3" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-3">Side effects</h4>
+<ul>
+<li>Creates or revises the metastudy <code>audit</code> markdown file.</li>
+<li>Emits a clear metastudy-level judgement of <code>pass</code> or <code>revision</code>, together with directives for what remains unresolved when revision is required.</li>
+<li>Hands off only through the metastudy <code>audit</code>.</li>
+<li>Does not write metastudy <code>spec</code>, metastudy <code>plan</code>, or metastudy <code>state</code>.</li>
+</ul>
+</section>
+</section>
+<section id="study-planner" class="level3">
+<h3 class="anchored" data-anchor-id="study-planner">5. Study planner</h3>
+<section id="semantic-policy-4" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-4">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>plan</code>, study <code>state</code>, and current study <code>plan</code>.</li>
+<li>Convert the parent metastudy direction for this study into a concrete list of substudies that together should answer the study-level question.</li>
+<li>Output meaning: the study <code>plan</code> is the current decomposition of the study into child substudies, together with the semantic rationale for why those substudies are the right next experiments or implementations.</li>
+<li>The planner should work at the substudy level of abstraction, not at the individual low-level training-step or coding-step level.</li>
+<li>The planner may refine an existing study plan in light of current study state by proposing substudies, but <strong>should not directly mutate study state</strong> itself.</li>
+</ul>
+</section>
+<section id="interactions-4" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-4">Interactions</h4>
+<ul>
+<li><p>Interacts with: study executor.</p></li>
+<li><p>Boundary: the study planner does not execute substudies or judge completion.</p></li>
+</ul>
+</section>
+<section id="side-effects-4" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-4">Side effects</h4>
+<ul>
+<li>Creates or revises the study <code>plan</code> markdown file.</li>
+<li>Does not write study <code>state</code> or study <code>audit</code>.</li>
+<li>Hands off only through the study <code>plan</code>.</li>
+</ul>
+</section>
+</section>
+<section id="study-executor" class="level3">
+<h3 class="anchored" data-anchor-id="study-executor">6. Study executor</h3>
+<section id="semantic-policy-5" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-5">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>plan</code>, study <code>plan</code>, study <code>state</code>, study <code>audit</code>, and child substudy <code>state</code> artifacts.</li>
+<li>Maintain the study as a long-lived stateful process which keeps driving the substudy loop until the study-level question is either answered or explicitly sent back for revision.</li>
+<li>Output meaning: the study <code>state</code> is the operational source of truth for where the study currently stands, which substudies have returned, what the current study-level findings are, and what the next action should be.</li>
+<li>The executor is the only study-level node which should translate reviewer directives back into ongoing process state.</li>
+</ul>
+</section>
+<section id="interactions-5" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-5">Interactions</h4>
+<ul>
+<li><p>Interacts with: study planner, substudy executor, and study reviewer.</p></li>
+<li><p>Boundary: the study executor does not define the study question, does not decompose the study semantically on its own, and does not make the final judgement of pass versus revision.</p></li>
+</ul>
+</section>
+<section id="side-effects-5" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-5">Side effects</h4>
+<ul>
+<li>Creates or revises the study <code>state</code> markdown file.</li>
+<li>Initializes study <code>state</code> when entering the driving loop if it does not yet exist.</li>
+<li>Invokes the study planner when the current study <code>plan</code> is missing, stale, or insufficient for the next pass through the substudies.</li>
+<li>Invokes the substudy executor over the substudies implied by the current study <code>plan</code>.</li>
+<li>Updates study <code>state</code> after each child substudy returns, so that the study can be resumed without needing to inspect child audits.</li>
+<li>Invokes the study reviewer after the relevant child substudies for the current plan pass have returned.</li>
+<li>Reads study <code>audit</code> and translates its directives into updated study <code>state</code>.</li>
+<li>Does not write study <code>plan</code> or study <code>audit</code>.</li>
+</ul>
+</section>
+</section>
+<section id="study-reviewer" class="level3">
+<h3 class="anchored" data-anchor-id="study-reviewer">7. Study reviewer</h3>
+<section id="semantic-policy-6" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-6">Semantic policy</h4>
+<ul>
+<li>Reads: metastudy <code>plan</code>, study <code>state</code>, and study <code>plan</code>.</li>
+<li>Judge whether the study, at its current level of evidence and synthesis, has actually answered the study-level question well enough to pass.</li>
+<li>Output meaning: the study <code>audit</code> is the study-level judgement artifact. It should clearly state whether the study passes or requires revision, and why.</li>
+<li>The reviewer should reason from the study question as situated within the metastudy plan, and from the accumulated substudy results as represented in study state, not from substudy audits.</li>
+<li>The reviewer should be strict. It should not grant pass merely because all currently planned substudies completed; it should evaluate whether the study question was in fact answered and push for further experiments or reframing as needed.</li>
+</ul>
+</section>
+<section id="interactions-6" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-6">Interactions</h4>
+<ul>
+<li><p>Interacts with: study executor.</p></li>
+<li><p>Boundary: the reviewer does not update study <code>state</code>, does not revise the plan itself, and does not execute any further substudies.</p></li>
+</ul>
+</section>
+<section id="side-effects-6" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-6">Side effects</h4>
+<ul>
+<li>Creates or revises the study <code>audit</code> markdown file.</li>
+<li>Emits a clear study-level judgement of <code>pass</code> or <code>revision</code>, together with directives for what remains unresolved when revision is required.</li>
+<li>Hands off only through the study <code>audit</code>.</li>
+<li>Does not write study <code>plan</code> or study <code>state</code>.</li>
+</ul>
+</section>
+</section>
+<section id="substudy-executor" class="level3">
+<h3 class="anchored" data-anchor-id="substudy-executor">8. Substudy executor</h3>
+<section id="semantic-policy-7" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-7">Semantic policy</h4>
+<ul>
+<li>Reads: study <code>plan</code>, substudy <code>state</code>, and, when present, parent study context as carried through the study plan.</li>
+<li>Carry out a single concrete substudy or a tightly aligned bundle of concrete experiments/implementations until the substudy has produced a meaningful result to report upward.</li>
+<li>Output meaning: the substudy <code>state</code> is the operational and semantic record of what was attempted, what happened, what artifacts were produced, and what the substudy currently concludes.</li>
+<li>The substudy executor operates at the lowest abstraction level in the hierarchy. It is responsible for concrete experimental action, not for planning broader scientific direction.</li>
+</ul>
+</section>
+<section id="interactions-7" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-7">Interactions</h4>
+<ul>
+<li><p>Interacts with: study executor and substudy reviewer.</p></li>
+<li><p>Boundary: the substudy executor does not redefine the study question, does not create the study plan, and does not make the final judgement of whether the substudy is adequate as returned.</p></li>
+</ul>
+</section>
+<section id="side-effects-7" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-7">Side effects</h4>
+<ul>
+<li>Creates or revises the substudy <code>state</code> markdown file.</li>
+<li>Initializes substudy <code>state</code> when the substudy is first launched if it does not yet exist.</li>
+<li>Runs the concrete experiment or implementation work implied by the substudy.</li>
+<li>Records concrete outcomes, produced artifacts, failures, and provisional conclusions in substudy <code>state</code>.</li>
+<li>Invokes the substudy reviewer when the substudy has reached a point where it can be judged.</li>
+<li>Reads reviewer guidance as reflected back into substudy <code>state</code> or via the study executor’s control flow.</li>
+<li>Does not write study <code>plan</code>, study <code>state</code>, or any <code>audit</code> artifact.</li>
+</ul>
+</section>
+</section>
+<section id="substudy-reviewer" class="level3">
+<h3 class="anchored" data-anchor-id="substudy-reviewer">9. Substudy reviewer</h3>
+<section id="semantic-policy-8" class="level4">
+<h4 class="anchored" data-anchor-id="semantic-policy-8">Semantic policy</h4>
+<ul>
+<li>Reads: study <code>plan</code> and substudy <code>state</code>.</li>
+<li>Judge whether the substudy, as executed, is sufficient to report back to the parent study, or whether it should continue with revision.</li>
+<li>Output meaning: the substudy <code>audit</code> is the substudy-level judgement artifact. It should clearly state whether the substudy should return upward or continue under revision, and why.</li>
+<li>The reviewer should reason from the substudy’s role within the study plan and from the actual concrete outcomes recorded in substudy state.</li>
+<li>The reviewer should be strict. It should not accept a substudy merely because some experiment was run; it should evaluate whether the substudy produced meaningful evidence relative to its intended role in the study.</li>
+</ul>
+</section>
+<section id="interactions-8" class="level4">
+<h4 class="anchored" data-anchor-id="interactions-8">Interactions</h4>
+<ul>
+<li><p>Interacts with: substudy executor.</p></li>
+<li><p>Boundary: the reviewer does not update substudy <code>state</code>, does not revise the study plan itself, and does not execute any further experimental work.</p></li>
+</ul>
+</section>
+<section id="side-effects-8" class="level4">
+<h4 class="anchored" data-anchor-id="side-effects-8">Side effects</h4>
+<ul>
+<li>Creates or revises the substudy <code>audit</code> markdown file.</li>
+<li>Emits a clear substudy-level judgement of <code>report back</code> or <code>continue with revision</code>, together with directives for what remains unresolved when further work is required.</li>
+<li>Hands off only through the substudy <code>audit</code>.</li>
+<li>Does not write study <code>plan</code> or substudy <code>state</code>.</li>
+</ul>
+</section>
+</section>
+<section id="metastudy-layout" class="level3">
+<h3 class="anchored" data-anchor-id="metastudy-layout">Metastudy layout</h3>
+<p>All files and md artifacts should be concise, informative, and <strong>prefer robust interlinking over monolithic bloating</strong>. If you can’t explain or document something clearly, then it’s not ready.</p>
+<p>It is strongly encouraged to back up <code>state.md</code> and <code>audit.md</code> with figures whenever that materially improves clarity. Visual and other report-supporting artifacts should go under the local <code>figures/</code> directory at the corresponding metastudy / study / substudy level.</p>
+<pre class="text"><code>metastudies/
+└── &lt;metastudy_slug&gt;/
+    ├── spec.md
+    ├── plan.md
+    ├── state.md
+    ├── audit.md
+    ├── figures/
+    ├── scripts/
+    └── studies/
+        └── &lt;study_slug&gt;/
+            ├── plan.md
+            ├── state.md
+            ├── audit.md
+            ├── figures/
+            ├── scripts/
+            └── substudies/
+                └── &lt;substudy_slug&gt;/
+                    ├── state.md
+                    ├── audit.md
+                    ├── artifacts/
+                    ├── figures/
+                    └── scripts/</code></pre>
+<section id="spec-file" class="level4">
+<h4 class="anchored" data-anchor-id="spec-file">Spec file</h4>
+<p>The spec file should clearly include the following:</p>
+<ol type="1">
+<li>Clear re-iteration of the objectives so that the reviewer has clear instructions and context.</li>
+<li>Enough guidelines, or specifications, to get a planner to implement a concrete study.
+<ul>
+<li>In case of a metastudy spec file, enough guidance for the study executor to make a plan.</li>
+<li>In case of a substudy spec file, clear guidance and specification of the substudy so that the executor can implement it.</li>
+</ul></li>
+<li>Indices to resource files and context.</li>
+</ol>
+</section>
+<section id="plan-file-format" class="level4">
+<h4 class="anchored" data-anchor-id="plan-file-format">Plan file format</h4>
+<ol type="1">
+<li>Link to the spec file</li>
+<li>Clear, standalone reiteration of the metastudy / study objectives.</li>
+<li>An clear list of lower-level primitives (study / substudy) specifications, see “spec file” subsection.</li>
+<li>Spec list should be append-only: executor and planners can, based on reviewer feedback, add to the plan file, but not modify existing sections.</li>
+</ol>
+</section>
+<section id="state-file-format" class="level4">
+<h4 class="anchored" data-anchor-id="state-file-format">State file format</h4>
+<ol type="1">
+<li>Link to spec and plan.</li>
+<li>Append-only list of metastudy / study / substudy results:
+<ul>
+<li>Metastudy: standalone report of study outcomes with reference as necessary, along the lines of how it has progressed along our objective.</li>
+<li>Study: same as metastudy</li>
+<li>Substudy: concrete experiment / implementation results.</li>
+</ul></li>
+<li>State remains executor-owned at every level.</li>
+<li>If review changes the process state, the executor should append a standalone summary of what the review implies for next steps.</li>
+<li>Reviewer-authored judgement should live in <code>audit</code>, not be written directly into <code>state</code>.</li>
+<li>When tables, plots, diagrams, or visual comparisons materially clarify the state, place them under <code>figures/</code> and reference them from <code>state.md</code> rather than embedding bulky content inline.</li>
+</ol>
+</section>
+<section id="audit-file-format" class="level4">
+<h4 class="anchored" data-anchor-id="audit-file-format">Audit file format</h4>
+<ol type="1">
+<li>Reiterate the sharp objective provided in the plan, or audit context</li>
+<li>Append-only list for each round of review:
+<ul>
+<li>Clear verdict:
+<ul>
+<li>Metastudy / study: <code>pass</code> or <code>revision</code></li>
+<li>Substudy: <code>report back</code> or <code>continue with revision</code></li>
+</ul></li>
+<li>Synthesis (high-level) and details of execution artifacts, with clear analysis of their relevance. Draw conclusions, extrapolate, and relate <strong>experimental</strong> / lower-level outcomes with progress along the high-level objective.</li>
+<li>If revision: clear instructions for sharpened intermediate objectives and proposed studies / experiments.</li>
+</ul></li>
+<li>When visual evidence or report-style artifacts materially strengthen the review, place them under <code>figures/</code> and reference them from <code>audit.md</code>.</li>
+</ol>
+</section>
+</section>
+</section>
+<section id="holistic-workflow" class="level2">
+<h2 class="anchored" data-anchor-id="holistic-workflow">Holistic workflow</h2>
+<ul>
+<li>User provides short instruction, or markdown file for study specs.</li>
+<li>User iterates with <strong>metastudy architect</strong> to produce a concise but clear metastudy spec.</li>
+<li>We enter the stateful metastudy-executor driving loop:
+<ul>
+<li>Initialize with empty <code>metastudy state</code> and <code>plan</code></li>
+<li>Repeat until the <strong>metastudy reviewer</strong> explicitly approves the study
+<ul>
+<li>Metastudy planner consumes <code>state</code>, <code>spec</code>, and <code>plan</code> to produce new <code>plan</code>.</li>
+<li><strong>Metastudy executor</strong> starts the <em>study-executor</em> loop sequentially across study specifications:
+<ul>
+<li>Initialize with empty <code>study state</code> and <code>plan</code></li>
+<li>Repeat until the <strong>study reviewer</strong> explicitly approves the study
+<ul>
+<li>Study planner consumes (1) <code>metastudy-plan</code> with study-index info, (2) <code>study state</code>, (3) <code>study plan</code> to produce new <code>study plan</code></li>
+<li>For each substudy in the plan, <strong>study executor</strong> launches <strong>substudy executor</strong>
+<ul>
+<li>Substudy initialized with empty <code>substudy state</code></li>
+<li>Substudy executor consumes (1) <code>study-plan</code> with substudy index, (2) <code>substudy state</code>, to produce updated <code>substudy state</code></li>
+<li>Substudy reviewer consumes <code>study-plan</code>, <code>substudy-state</code> to produce <code>substudy-audit</code> detailing <code>continue with revision</code> or <code>report back</code></li>
+<li>Substudy executor reads <code>substudy-audit</code> and updates <code>substudy-state</code> accordingly</li>
+</ul></li>
+<li>After a substudy returns, <strong>study executor</strong> updates the <code>study state</code>. If all substudy returns, study executor invokes <strong>study reviewer</strong></li>
+<li><strong>study reviewer</strong> consumes <code>metastudy-plan</code>, <code>study-state</code> to produce <code>study-audit</code> with directives and a clear “pass / revision”. Returns to the <strong>study executor</strong>.</li>
+<li><strong>Study executor</strong> views the <code>study-audit</code> and produces updated <code>study state</code> with all the relevant info; metastudy should not need to read the audit, just the state is enough. In case of pass, return. In case of revision, go back to the planner step</li>
+</ul></li>
+<li>After a study returns, <strong>metastudy executor</strong> updates the <code>metastudy state</code>. If all study returned, invokes <strong>metastudy reviewer</strong></li>
+<li><strong>metastudy reviewer</strong> consumes <code>metastudy-plan</code>, <code>metastudy-spec</code>, and <code>study-state</code> for all child studies (but not audits!!) to produce a clear <code>metastudy-audit</code> with directives and pass / revision. Yields to <strong>metastudy executor</strong></li>
+<li><strong>metastudy executor</strong> views the audit and updates <code>metastudy state</code>. If pass, loop finishes, or report back</li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="dcterms.date" content="2026-03-01">
+
+<title>OT for generative modeling 3 — Diffusion as Maximum Likelihood Estimation – Diffusive Latent Generation</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-719edf7fba01f5a886ffab10bbd48302.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Diffusive Latent Generation</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#contents" id="toc-contents" class="nav-link active" data-scroll-target="#contents">Contents</a></li>
+  <li><a href="#physics-of-diffusion" id="toc-physics-of-diffusion" class="nav-link" data-scroll-target="#physics-of-diffusion">Physics of diffusion</a>
+  <ul class="collapse">
+  <li><a href="#brownian-motion-as-score-flow" id="toc-brownian-motion-as-score-flow" class="nav-link" data-scroll-target="#brownian-motion-as-score-flow">Brownian motion as score flow</a></li>
+  <li><a href="#brownian-motion-with-drift-fokker-planck" id="toc-brownian-motion-with-drift-fokker-planck" class="nav-link" data-scroll-target="#brownian-motion-with-drift-fokker-planck">Brownian motion with drift, Fokker-Planck</a></li>
+  <li><a href="#diffusion-as-wasserstein-gradient-flow" id="toc-diffusion-as-wasserstein-gradient-flow" class="nav-link" data-scroll-target="#diffusion-as-wasserstein-gradient-flow">Diffusion as Wasserstein gradient flow</a></li>
+  <li><a href="#bonus-andersons-theorem" id="toc-bonus-andersons-theorem" class="nav-link" data-scroll-target="#bonus-andersons-theorem">Bonus: Anderson’s theorem</a></li>
+  </ul></li>
+  <li><a href="#mle-interpretation-of-diffusion-models" id="toc-mle-interpretation-of-diffusion-models" class="nav-link" data-scroll-target="#mle-interpretation-of-diffusion-models">MLE interpretation of diffusion models</a>
+  <ul class="collapse">
+  <li><a href="#the-dynamic-de-bruijn-identity" id="toc-the-dynamic-de-bruijn-identity" class="nav-link" data-scroll-target="#the-dynamic-de-bruijn-identity">the dynamic de Bruijn identity</a></li>
+  <li><a href="#application-to-various-processes." id="toc-application-to-various-processes." class="nav-link" data-scroll-target="#application-to-various-processes.">Application to various processes.</a></li>
+  </ul></li>
+  <li><a href="#tweedies-formula-and-flow-matching" id="toc-tweedies-formula-and-flow-matching" class="nav-link" data-scroll-target="#tweedies-formula-and-flow-matching">Tweedie’s formula and flow matching</a>
+  <ul class="collapse">
+  <li><a href="#tweedies-formula" id="toc-tweedies-formula" class="nav-link" data-scroll-target="#tweedies-formula">Tweedie’s formula</a></li>
+  <li><a href="#the-flow-matching-process" id="toc-the-flow-matching-process" class="nav-link" data-scroll-target="#the-flow-matching-process">The flow matching process</a></li>
+  <li><a href="#flow-matching-in-practice" id="toc-flow-matching-in-practice" class="nav-link" data-scroll-target="#flow-matching-in-practice">Flow matching in practice</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">OT for generative modeling 3 — Diffusion as Maximum Likelihood Estimation</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">March 1, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>This part uses the Wasserstein toolkit we’ve developed in parts 0 and 1 (links) to unpack the dominant generative paradigm from first principles. We begin with some physics on Brownian motion and stochastic processes, highlights include:</p>
+<ul>
+<li><strong>Brownian motion <span class="math inline">\(\leftrightarrow\)</span> score flow</strong> provides the fundamental bridge between SDE and ODE formulations as well as a valuable perspective on the score-ODE which shows up everywhere in generative modeling.
+<ul>
+<li>As a corollary, we prove <strong>Anderson’s theorem</strong> which allows one to run a SDE backwards in time.</li>
+</ul></li>
+<li>Unifying microscopic particle movement with macroscopic, thermodynamic optimization: diffusion with drift (Fokker-Planck) as Wasserstein gradient descent.</li>
+</ul>
+<p>We also deep-dive into the two absolutely foundational pillars of scalable diffusion / flow matching. In my opinion, they are the first-principles reason why flow matching dominate modern generative modeling:</p>
+<ul>
+<li><strong>Tweedie’s formula</strong> provides a dimension-scalable solution to the density estimation problem, the universal problem to all generative modeling. It turns density estimation – which nonparametrically scales with dimension – into function estimation, which scales with the amount and internal structure of the data.</li>
+<li>The <strong>dynamic de Bruijin identity</strong> provides a canonical noise-spectral decomposition of KL-divergence. It bridges score matching (exactly what Tweedie’s provide), with MSE; it also provides a canonical spectrum over which to commit bias-variance tradeoffs.</li>
+</ul>
+<p>Later todo for myself: look into diffusion as optimal Bayes engine (Polyanskiy).</p>
+<section id="contents" class="level2">
+<h2 class="anchored" data-anchor-id="contents">Contents</h2>
+<ul>
+<li><a href="#contents">Contents</a></li>
+<li><a href="#physics-of-diffusion">Physics of diffusion</a>
+<ul>
+<li><a href="#brownian-motion-as-score-flow">Brownian motion as score flow</a></li>
+<li><a href="#brownian-motion-with-drift-fokker-planck">Brownian motion with drift, Fokker-Planck</a></li>
+<li><a href="#diffusion-as-wasserstein-gradient-flow">Diffusion as Wasserstein gradient flow</a></li>
+<li><a href="#bonus-andersons-theorem">Bonus: Anderson’s theorem</a></li>
+</ul></li>
+<li><a href="#mle-interpretation-of-diffusion-models">MLE interpretation of diffusion models</a>
+<ul>
+<li><a href="#the-dynamic-de-bruijn-identity">the dynamic de Bruijn identity</a></li>
+<li><a href="#application-to-various-processes">Application to various processes.</a>
+<ul>
+<li><a href="#heat-process">Heat process</a></li>
+<li><a href="#variance-preserving-process">Variance-preserving process</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#tweedies-formula-and-flow-matching">Tweedie’s formula and flow matching</a>
+<ul>
+<li><a href="#tweedies-formula">Tweedie’s formula</a></li>
+<li><a href="#the-flow-matching-process">The flow matching process</a></li>
+<li><a href="#flow-matching-in-practice">Flow matching in practice</a></li>
+</ul></li>
+</ul>
+<!-- A clarifying point: diffusion is a heavily loaded word, it could mean any of the following:
+
+1. Brownian motion of particles $dX_t = g\, dW_t$.
+2. Brownian motion of particles with drift.
+3. The diffusion equation (Fokker-Planck) [eqref]
+4. Fokker-planck based SDE generative models.
+5. The wide class of flow matching ODE and diffusion SDE generative models. -->
+</section>
+<section id="physics-of-diffusion" class="level2">
+<h2 class="anchored" data-anchor-id="physics-of-diffusion">Physics of diffusion</h2>
+<p>We begin by delving into some physics. We first adopt a <strong>microscopic, particle-level</strong> description of the diffusive process, then unify it with a <strong>macroscopic, information-theory level</strong> description: - Microscopic language: brownian motion, vector fields, and score. - Macroscopic language: KL minimization, entropy.</p>
+<p>The keystone unifying these two perspectives is the Wasserstein gradient flow.</p>
+<section id="brownian-motion-as-score-flow" class="level3">
+<h3 class="anchored" data-anchor-id="brownian-motion-as-score-flow">Brownian motion as score flow</h3>
+<p>:::remark[Brownian motion] Formally, a standard Brownian motion <span class="math inline">\(W_t\)</span> is a continuous-time stochastic process characterized by: - <strong>Independent increments</strong>: future displacements <span class="math inline">\(W_{t+u} - W_t\)</span> are entirely independent of past states - <strong>Gaussian increments</strong>: <span class="math inline">\(W_{t+u} - W_t \sim \mathcal{N}(0, u)\)</span>.</p>
+<p>The infinitesimal increment <span class="math inline">\(dW_t\)</span> behaves as a zero-mean Gaussian variable with variance <span class="math inline">\(dt\)</span>. It is the <strong>CLT limit of a discrete binomial random walk</strong>. We’ll deep-dive in a later series on the connections between Black-Scholes options pricing, heat diffusion, and quantum mechanics, stay tuned! :::</p>
+<p>Consider the standard heat-diffusion process where particles are purely driven by Brownian jittering:</p>
+<p><span id="eq-brownian"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    dX_t = g\, dW_t
+\label{eq:brownian}
+\end{equation}
+\]</span></p>
+<p>Over time <span class="math inline">\(\Delta t\)</span>, particles jump according to <span class="math inline">\(\mathcal{N}(0, g^2\Delta t)\)</span>.</p>
+<p>:::theorem<a href="#brownian-motion-as-score-flow">Brownian motion as score flow</a> The stochastic evolution <span class="math inline">\(\eqref{eq:brownian}\)</span> is equivalent at the distribution level to deterministic evolution under the velocity field</p>
+<p><span id="eq-score-flow"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    v(x) = -\dfrac{g^2}{2} \nabla \log \rho(x)
+\label{eq:score-flow}
+\end{equation}
+\]</span></p>
+<p>We’re saying that the net, distribution-level effect of Brownian motion can be described by probability mass evolving deterministically according to the score gradient <span class="math inline">\(\nabla \log \rho(x)\)</span>. Equivalently, <span class="math display">\[
+    dX_t = g\, dW_t \quad \cong \quad dX_t = -\dfrac{g^2}{2} \nabla \log \rho
+\]</span> :::</p>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>This is the engine behind reducing SDE (diffusion) models to ODE (flow matching) models.</p>
+</div>
+<details>
+<summary>
+Proof sketch: 1D discretization argument
+</summary>
+<p>Imagine bins of width <span class="math inline">\(\Delta x\)</span> at points <span class="math inline">\(x_j\)</span>, each with probability mass <span class="math inline">\(p_j\)</span>. Over time interval <span class="math inline">\(\Delta t\)</span>, Brownian particles have equal probability of hopping left or right. The net flux of mass from bin <span class="math inline">\(j-1\)</span> to <span class="math inline">\(j\)</span> is: <span class="math display">\[
+    J_j = \dfrac{1}{2\Delta t}(p_{j-1} - p_j)
+\]</span> The flux from <span class="math inline">\(j\)</span> to <span class="math inline">\(j+1\)</span> is <span class="math inline">\(J_{j+1} = \frac{1}{2\Delta t}(p_j - p_{j+1})\)</span>. The net change in mass at bin <span class="math inline">\(j\)</span> is: <span class="math display">\[
+    \pd t p_j = J_j - J_{j+1} = \dfrac{1}{2\Delta t}(p_{j-1} + p_{j+1} - 2p_j)
+\]</span></p>
+<p>Converting to continuous density <span class="math inline">\(\rho_j \approx p_j/\Delta x\)</span>: <span class="math display">\[
+    \pd t \rho_j = \dfrac{\Delta x}{2\Delta t}(\rho_{j-1} + \rho_{j+1} - 2\rho_j)
+\]</span></p>
+<p>Recognizing the central difference approximation to the Laplacian <span class="math inline">\(\Delta \rho := \sum_j \pd{j}^2 \rho\)</span>: <span class="math display">\[
+    \Delta \rho_j \approx \dfrac{\rho_{j+1} - 2\rho_j + \rho_{j-1}}{(\Delta x)^2}
+\]</span></p>
+<p>we obtain: <span class="math display">\[
+    \pd t \rho_j = \dfrac{(\Delta x)^2}{2\Delta t}\, \Delta \rho_j
+\]</span></p>
+<p>The variance of Brownian motion <span class="math inline">\(g\, dW_t\)</span> over time <span class="math inline">\(\Delta t\)</span> is <span class="math inline">\(g^2\Delta t = (\Delta x)^2\)</span>, yielding: <span class="math display">\[
+    \pd t \rho = \dfrac{g^2}{2}\, \Delta \rho = -\nabla \cdot(\rho v)
+\]</span> for <span class="math inline">\(v = -\frac{g^2}{2}\nabla \log \rho\)</span>. <span class="math inline">\(\square\)</span></p>
+</details>
+</section>
+<section id="brownian-motion-with-drift-fokker-planck" class="level3">
+<h3 class="anchored" data-anchor-id="brownian-motion-with-drift-fokker-planck">Brownian motion with drift, Fokker-Planck</h3>
+<p>Now add drift to the Brownian motion:</p>
+<p><span id="eq-sde"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    dX_t = f_t(X_t)\, dt + g_t\, dW_t
+\label{eq:sde}
+\end{equation}
+\]</span></p>
+<p>By linearity, the induced probability density <span class="math inline">\(\rho_t\in \mathcal W_2\)</span> evolves under velocity field:</p>
+<p><span id="eq-particle-velocity"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    v_t = f_t - \dfrac{g_t^2}{2} \nabla \log \rho_t
+\label{eq:particle-velocity}
+\end{equation}
+\]</span></p>
+<p>Applying the continuity equation <span class="math inline">\(\pd t \rho_t = -\nabla \cdot (\rho_t v_t)\)</span> yields the <strong>Fokker-Planck equation</strong>:</p>
+<p><span id="eq-fokker-planck"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    \pd t \rho_t = -\nabla \cdot (\rho_t f_t) + \dfrac{g_t^2}{2} \Delta \rho_t
+\label{eq:fokker-planck}
+\end{equation}
+\]</span> Since curl components don’t affect density evolution, write <span class="math inline">\(f_t = \nabla V_t\)</span>, and we’re ready to state the celebrated Fokker-Planck equation.</p>
+<p>:::theorem[Fokker-Planck equation] Particles evolving under the SDE <span class="math display">\[
+    dX_t = f_t(X_t)\, dt + g_t\, dW_t
+\]</span> induce probability density evolution given by the <strong>Fokker-Planck equation</strong>: <span class="math display">\[
+\begin{equation}
+    \pd t \rho_t = -\nabla \cdot (\rho_t f_t) + \dfrac{g_t^2}{2} \Delta \rho_t
+\label{eq:fokker-planck-pdd}
+\end{equation}
+\]</span> Writing <span class="math inline">\(f_t = \nabla V_t\)</span> (curl components vanish under divergence), this is equivalently deterministic flow under: <span class="math display">\[
+\begin{equation}
+    v_t = \nabla V_t - \dfrac{g_t^2}{2} \nabla \log \rho_t = \nabla\left(V_t - \dfrac{g_t^2}{2}\log \rho_t\right)
+\label{eq:fokker-planck-ode}
+\end{equation}
+\]</span> :::</p>
+<p><strong>Proof.</strong> By linearity and the Brownian motion as score flow <span class="math inline">\(\eqref{eq:score-flow}\)</span>, the following SDE and ODE are interchangeable: <span class="math display">\[
+    dX_t = f_t(X_t)\, dt + g_t\, dW_t \leftrightarrow v_t = f_t - \dfrac{g_t^2}{2} \nabla \log \rho_t
+\]</span></p>
+<p>Applying the continuity equation <span class="math inline">\(\pd t \rho_t = -\nabla \cdot(\rho_t v_t)\)</span>: <span class="math display">\[
+\begin{aligned}
+    \pd t \rho_t
+    &amp;= -\nabla \cdot\left(\rho_t v_t \right) \\
+    &amp;= -\nabla \cdot(\rho_t f_t) + \dfrac{g_t^2}{2}\nabla \cdot(\rho_t \nabla \log \rho_t) \\
+    &amp;= -\nabla \cdot(\rho_t f_t) + \dfrac{g_t^2}{2}\Delta \rho_t \quad  \square
+\end{aligned}
+\]</span></p>
+</section>
+<section id="diffusion-as-wasserstein-gradient-flow" class="level3">
+<h3 class="anchored" data-anchor-id="diffusion-as-wasserstein-gradient-flow">Diffusion as Wasserstein gradient flow</h3>
+<p>In this subsection, we’ll endow the Fokker-Planck (diffusion) equation with a macroscopic interpretation. This exemplifies the theme that <strong>Wasserstein geometry connects microscopic, particle-level evolution with distribution-level extremization</strong>. Let’s begin with a special case:</p>
+<p>:::corollary[Brownian motion maximizes entropy] Pure Brownian diffusion <span class="math inline">\(dX_t = g\, dW_t\)</span> executes Wasserstein gradient ascent on the entropy functional <span class="math inline">\(\mathcal{H}(\rho) = -\int \rho \log \rho\)</span>. :::</p>
+<p><strong>Proof.</strong> The functional derivative of entropy is: <span class="math display">\[
+    \dfrac{\delta \mathcal{H}(\rho)}{\delta \rho} = -(\log \rho + 1)
+\]</span> By Otto’s theorem (see <a href="../../blogs/machine-learning/ot-generative-2-drifting-models/">Part 2</a>), the Wasserstein gradient is: <span class="math display">\[
+    \mathrm{grad}_W \mathcal{H}(\rho) = \nabla_x\left(\dfrac{\delta \mathcal{H}}{\delta \rho}\right) = -\nabla \log \rho
+\]</span> Wasserstein gradient ascent follows <span class="math inline">\(v = \mathrm{grad}_W \mathcal{H} = -\nabla \log \rho\)</span>, which matches <span class="math inline">\(\eqref{eq:fokker-planck-pdd}\)</span> with <span class="math inline">\(f_t = 0\)</span> and <span class="math inline">\(g_t = \sqrt 2\)</span>. <span class="math inline">\(\square\)</span></p>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>This corollary bridges the microscopic interpretation of <strong>heat equation as Brownian motion</strong> (particle jittering) with the macroscopic interpretation of <strong>heat equation as process that minimizes entropy along the Wasserstein geometry</strong>.</p>
+<p>Why the Wasserstein geometry? There exists other geometries of probability distributions, Fisher-Rao being a notable one. Is the Wasserstein geometry, in some sense, canonical? For one, Fisher-Rao is not physical because it’s agnostic towards rearrangements of the base space <span class="math inline">\(\R^n\)</span>; mass can be teleported around. The rigorous physical grounding of the Wasserstein geometry in non-equilibrium dynamics is a deep rabbit hole which we’ll not explore at the moment.</p>
+</div>
+<p>Now the general case. For simplicity, we suppress time dependence on <span class="math inline">\(V_t\)</span> and <span class="math inline">\(g_t\)</span>:</p>
+<p>:::theorem[Fokker-Planck as Wasserstein gradient flow] Define the <strong>Boltzmann equilibrium distribution</strong> from the potential <span class="math inline">\(V_t\)</span>: <span class="math display">\[
+    \sigma(x) = \dfrac{1}{Z} e^{-2V(x)/g^2}, \quad Z_t = \int e^{-2V/g^2}\, dx
+\]</span> Define the scaled KL divergence: <span class="math display">\[
+    \mathcal{F}(\rho) = \dfrac{g^2}{2} \, \mathrm{KL}(\rho \| \sigma) = \dfrac{g^2}{2} \int \rho \log \dfrac{\rho}{\sigma}\, dx
+\]</span> The Fokker-Planck equation <span class="math inline">\(\eqref{eq:fokker-planck}\)</span> is Wasserstein gradient <strong>descent</strong> on <span class="math inline">\(\mathcal F\)</span>: <span class="math display">\[
+    \pd t \rho_t = -\nabla \cdot(\rho_t \cdot \mathrm{grad}_W \mathcal{F}(\rho_t))
+\]</span> :::</p>
+<details>
+<summary>
+Proof
+</summary>
+<p>Expanding the KL divergence: <span class="math display">\[
+    \mathcal{F}(\rho) = \dfrac{g_t^2}{2} \int \rho \log \rho\, dx - \dfrac{g_t^2}{2} \int \rho \log \sigma_t\, dx
+\]</span> Using <span class="math inline">\(\log \sigma_t = -2V_t/g_t^2 - \log Z_t\)</span>: <span class="math display">\[
+    \mathcal{F}(\rho) = \int \rho V_t\, dx + \dfrac{g_t^2}{2}\int \rho \log \rho\, dx + \text{const}
+\]</span> The functional derivative is: <span class="math display">\[
+    \dfrac{\delta \mathcal{F}}{\delta \rho} = V_t + \dfrac{g_t^2}{2}(\log \rho + 1) = \dfrac{g_t^2}{2} \log \dfrac{\rho}{\sigma_t} + \text{const}
+\]</span> By Otto’s theorem, the Wasserstein gradient is: <span class="math display">\[
+    \mathrm{grad}_W \mathcal{F}(\rho) = \nabla_x\left(V_t + \dfrac{g_t^2}{2}\log \rho\right) = \nabla V_t + \dfrac{g_t^2}{2}\nabla \log \rho
+\]</span> Gradient descent follows <span class="math inline">\(v = -\mathrm{grad}_W \mathcal{F}\)</span>. From <span class="math inline">\(\eqref{eq:particle-velocity}\)</span> with <span class="math inline">\(f_t = \nabla V_t\)</span>: <span class="math display">\[
+    v_t = \nabla V_t - \dfrac{g_t^2}{2}\nabla \log \rho_t = -\left(-\nabla V_t + \dfrac{g_t^2}{2}\nabla \log \rho_t\right) = -\mathrm{grad}_W \mathcal{F}
+\]</span> Applying the continuity equation <span class="math inline">\(\pd t \rho_t = -\nabla \cdot(\rho_t v_t)\)</span> completes the proof. <span class="math inline">\(\square\)</span></p>
+</details>
+<div class="remark[Interpretation]">
+<p>Fokker-Planck evolution minimizes KL divergence to the <strong>Boltzmann equilibrium distribution</strong> <span class="math inline">\(\sigma_t \propto e^{-2V_t/g_t^2}\)</span>, where <span class="math inline">\(V\)</span> plays the role of energy and <span class="math inline">\(g^2/2\)</span> acts as temperature. The gradient <span class="math inline">\(\nabla V\)</span> pulls mass towards low potential while diffusion <span class="math inline">\(\frac{g^2}{2}\Delta \rho_t\)</span> spreads it out, balancing until <span class="math inline">\(\rho_\infty = \sigma\)</span>.</p>
+</div>
+<p>:::remark[Perspectives on the equilibrium distribution] The Boltzmann equilibrium distribution <span class="math inline">\(\sigma(x) = \frac{1}{Z}e^{-2V(x)/g^2}\)</span> admits three equivalent interpretations:</p>
+<ol type="1">
+<li><p><strong>Thermodynamic principle</strong>: <span class="math inline">\(\sigma\)</span> is the distribution that maximizes entropy subject to fixed expected energy: <span class="math display">\[
+\sigma = \arg\max_{\rho} \left\{-\int \rho \log \rho\, dx \;\Big|\; \int \rho V\, dx = E_0\right\}
+\]</span> The Lagrange multiplier enforcing the energy constraint gives the inverse temperature <span class="math inline">\(2/g^2\)</span>.</p></li>
+<li><p><strong>Dynamical equilibrium</strong>: <span class="math inline">\(\sigma\)</span> is the unique stationary solution to the Fokker-Planck equation <span class="math inline">\(\eqref{eq:fokker-planck}\)</span>. Setting <span class="math inline">\(\pd t \rho = 0\)</span>: <span class="math display">\[
+0 = -\nabla \cdot(\rho \nabla V) + \dfrac{g^2}{2}\Delta \rho = -\nabla \cdot\left(\rho \left(\nabla V - \dfrac{g^2}{2}\nabla \log \rho\right)\right)
+\]</span> This holds when the drift and diffusion balance: <span class="math inline">\(\nabla V = \frac{g^2}{2}\nabla \log \rho\)</span>, i.e., <span class="math inline">\(\rho \propto e^{-2V/g^2}\)</span>.</p></li>
+<li><p><strong>Optimal control</strong>: In reinforcement learning, <span class="math inline">\(\sigma\)</span> is the <strong>reward-optimal policy</strong> that maximizes expected reward <span class="math inline">\(-\int \rho V\)</span> subject to KL proximity to a reference policy: <span class="math display">\[
+\pi^* = \arg\max_{\pi} \left\{\mathbb{E}_\pi[-V] - \lambda\, \mathrm{KL}(\pi \| \pi_{\text{ref}})\right\}
+\]</span> The solution is <span class="math inline">\(\pi^* \propto \pi_{\text{ref}} \cdot e^{-V/\lambda}\)</span>, recovering the Boltzmann form when <span class="math inline">\(\pi_{\text{ref}}\)</span> is uniform and <span class="math inline">\(\lambda = g^2/2\)</span>. :::</p></li>
+</ol>
+</section>
+<section id="bonus-andersons-theorem" class="level3">
+<h3 class="anchored" data-anchor-id="bonus-andersons-theorem">Bonus: Anderson’s theorem</h3>
+<p>The Brownian motion as score flow equivalence <span class="math inline">\(\eqref{eq:score-flow}\)</span> allows us to elegantly prove a foundational theorem, <strong>Anderson’s theorem</strong>, which converts between forward and backward processes. Incidentally, it will also be helpful when we consider options pricing as a reverse-time heat diffusion process. To motivate it, consider the following question:</p>
+<ol type="1">
+<li>We know how to describe forward-time trajectories of particles using the heat equation (or Fokker-Planck when there’s potential).</li>
+<li>If we want to magically play the tape backwards, which particle evolution equation will replicate the reverse-time behavior?</li>
+</ol>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>This is not a trivial problem because while <span class="math inline">\(-dt = d(-t)\)</span>, the Brownian drift term doesn’t simply reverse: <span class="math inline">\(-dW_t \neq dW_{-t}\)</span>. Our proof consists of converting the forward and backward SDEs into ODEs via <span class="math inline">\(\eqref{eq:score-flow}\)</span> and matching the velocity components.</p>
+<p>Additionally, the choice of the same <span class="math inline">\(g_t\)</span> is canonical because forward and backward drift should be able to make use of the same amount of diffusion rate. Since we can microscopically tell the differences between Brownian motion with different diffusive constants and forward and reverse-time microscopic dynamics should be indistinguishable, we require <span class="math inline">\(g_t\, d\tilde W_t\)</span> in the reverse-time process.</p>
+</div>
+<p>:::theorem[Anderson’s theorem] Given a forward stochastic process on <span class="math inline">\(t \in [0, T]\)</span> governed by the SDE <span class="math display">\[
+    dX_t = f_t(X_t)\, dt + g_t \, dW_t
+\]</span> Let <span class="math inline">\(\rho_t\)</span> be the marginal probability density of <span class="math inline">\(X_t\)</span>. The reverse-time process which traces the exact same marginal distributions backwards from <span class="math inline">\(T\)</span> to <span class="math inline">\(0\)</span> is driven by the reverse SDE <span class="math display">\[
+    d\tilde X_t = \left[f_t(\tilde X_t) - g_t^2 \nabla \log \rho_t(\tilde X_t) \right]\, dt + g_t\, d\tilde W_t
+\]</span> :::</p>
+<p><strong>Proof.</strong> By the Brownian motion as score flow theorem <span class="math inline">\(\eqref{eq:score-flow}\)</span>, the forward SDE is equivalent to the ODE: <span class="math display">\[
+    dX_t = f_t\, dt + g_t\, dW_t \quad \leftrightarrow \quad dX_t = \left(f_t - \dfrac{g_t^2}{2} \nabla \log \rho_t\right)\, dt
+\]</span> For the reverse-time process, time flows backwards: <span class="math inline">\(d\tau = -dt\)</span> where <span class="math inline">\(\tau = T - t\)</span>. The reverse velocity must be the negative of the forward velocity to retrace the path: Converting back to forward time <span class="math inline">\(dt = -d\tau\)</span>: <span class="math display">\[
+    d\tilde X_t = \left(\dfrac{g_t^2}{2}\nabla \log \rho_t - f_t\right)\, dt
+\]</span></p>
+<p>Converting this ODE back to an SDE using <span class="math inline">\(\eqref{eq:score-flow}\)</span>: the reverse process is driven by an ODE under velocity field <span class="math inline">\(\tilde v = \frac{g_t^2}{2}\nabla \log \rho_t - f_t\)</span>.</p>
+<p>We have postulated from first principles that the <span class="math inline">\(\tilde v\)</span>-ODE is equivalent to a SDE with drift <span class="math inline">\(\tilde f_t\)</span> and diffusion rate <span class="math inline">\(g_t\)</span>. Applying the gauge degree of freedom to find <span class="math inline">\(\tilde f_t\)</span>: <span class="math display">\[
+    \tilde f_t - \dfrac{g_t^2}{2}\nabla \log \rho_t = \tilde v = \dfrac{g_t^2}{2}\nabla \log \rho_t - f_t
+\]</span> The LHS corresponds to <span class="math inline">\(\tilde v\, dt \leftrightarrow \tilde f_t\, dt + g_t\, d\tilde W_t\)</span>. The RHS comes from ODE reversal. Solving for <span class="math inline">\(\tilde f_t\)</span> yields <span class="math display">\[
+    d\tilde X_t = \tilde f_t\, dt + g_t\, d\tilde W_t = \left(f_t - g_t^2 \nabla \log \rho_t\right)\, dt + g_t\, d\tilde W_t \quad \square
+\]</span></p>
+</section>
+</section>
+<section id="mle-interpretation-of-diffusion-models" class="level2">
+<h2 class="anchored" data-anchor-id="mle-interpretation-of-diffusion-models">MLE interpretation of diffusion models</h2>
+<p>In this section, we provide a first-principles, maximum likelihood interpretation of diffusion generative models by applying the (dynamic) de Bruijn identity. This is the crux behind the celebrated paper <a href="https://arxiv.org/pdf/2101.09258">maximum likelihood training of score-based diffusion models</a>.</p>
+<p>The maximum likelihood objective <span class="math inline">\(D(p_{\mathrm{data}} \| q_{\mathrm{model}})\)</span> is prone to divergence when the support of <span class="math inline">\(q_{\mathrm{model}}\)</span> does not cover <span class="math inline">\(p_{\mathrm{data}}\)</span>. The de Bruijn identity <strong>decomposes maximum likelihood into score matching over a noise spectrum</strong>, allowing us to attenuate divergence in a controllable limit of the integral.</p>
+<section id="the-dynamic-de-bruijn-identity" class="level3">
+<h3 class="anchored" data-anchor-id="the-dynamic-de-bruijn-identity">the dynamic de Bruijn identity</h3>
+<p>Recall the definition of the Riemannian gradient: <span class="math display">\[
+    \la \nabla \mathcal F(\gamma_t), \dot \gamma_t\ra = \dfrac{d}{dt} \mathcal F(\gamma_t)
+\]</span> Consider the product manifold <span class="math inline">\(\mathcal W \times \mathcal W\)</span> equipped with the standard product metric, where <span class="math inline">\(\dot p_1, \dot q_1, \dot p_2, \dot q_2\)</span> are tangent vectors on the components: <span class="math display">\[
+    \la \dot p_1\oplus \dot q_1, \dot p_2\oplus \dot q_2\ra_{\mathcal W\times \mathcal W} = \la \dot p_1, \dot q_1\ra + \la \dot p_2, \dot q_2\ra
+\]</span> Define the functional <span class="math inline">\(D(p \| q)\)</span> on the product manifold <span class="math inline">\(\mathcal W\times \mathcal W\)</span>. The Wasserstein gradient factors (note that <span class="math inline">\(\nabla_p\)</span> denotes the Wasserstein gradient w.r.t. <span class="math inline">\(p\)</span>): <span class="math display">\[
+    \nabla_{pq} D(p \| q) = \nabla_p D(p \| q) \oplus \nabla_q D(p \| q)
+\]</span> Given trajectories <span class="math inline">\(p_t, q_t\)</span>, we have <span class="math display">\[
+\begin{aligned}
+    \dfrac{d}{dt} D(p_t \| q_t)
+    &amp;=
+    \la \nabla_p D(p_t \| q_t) \oplus \nabla_q D(p_t \| q_t)
+    , \dot p_t \oplus \dot q_t \ra  \\
+    &amp;= \la \nabla_p D(p_t \| q_t), \dot p_t\ra + \la \nabla_q D(p_t \| q_t), \dot q_t\ra \\
+    &amp;= \la \nabla \log p_t - \nabla \log q_t, \dot p_t\ra - \la \dfrac{q_t}{p_t} \left(\nabla \log p_t - \nabla \log q_t\right), \dot q_t\ra \\
+    &amp;= \int \la \nabla \log p_t - \nabla \log q_t, \dot p_t\ra\, dp_t - \int \la \nabla \log p_t - \nabla \log q_t, \dot q_t\ra\, dp_t \\
+    &amp;= \mathbb E_{p_t} \la \nabla \log p_t - \nabla \log q_t, \dot p_t - \dot q_t\ra
+\end{aligned}
+\]</span> Note that the integral and gradient are over <span class="math inline">\(x\in \R^n\)</span> in sample space. This is the general dynamic de Bruijn’s identity: it’s just the gradient expansion of the KL-divergence on product manifold.</p>
+<p>:::theorem<a href="#the-dynamic-de-bruijn-identity">the dynamic de Bruijn identity</a> Given distribution trajectories <span class="math inline">\(p_t, q_t\in \mathcal W\)</span>, the KL divergence rate of change is given by</p>
+<p><span id="eq-debruijn"></span></p>
+<p><span class="math display">\[
+\begin{equation}
+    \dfrac d {dt} D(p_t \| q_t) = \mathbb E_{p_t} \la \nabla \log p_t - \nabla \log q_t, \dot p_t - \dot q_t\ra
+\label{eq:debruijn}
+\end{equation}
+\]</span> :::</p>
+</section>
+<section id="application-to-various-processes." class="level3">
+<h3 class="anchored" data-anchor-id="application-to-various-processes.">Application to various processes.</h3>
+<p>The variance exploding process injects Gaussian noise without attenuating the original signal. It’s simply the heat equation with variable diffusion constant.</p>
+<p>In this section, we consider two common process and the application of theorem <span class="math inline">\(\eqref{eq:debruijn}\)</span> to each:</p>
+<ol type="1">
+<li>The <u>heat process</u> with noise schedule <span class="math inline">\(g_t\)</span>. it’s defined on <span class="math inline">\(t\in [0, \infty)\)</span> and the variance of the marginal explodes.</li>
+<li>The <u>variance preserving process</u>, defined on <span class="math inline">\(t\in [0, \infty)\)</span> and <span class="math inline">\(p_\infty\to \mathcal N(0, I)\)</span>.</li>
+</ol>
+<section id="heat-process" class="level4">
+<h4 class="anchored" data-anchor-id="heat-process">Heat process</h4>
+<p>:::definition<a href="#heat-process">heat process</a> The variance-exploding process is defined to obey the SDE: <span class="math display">\[
+    dX_t = g_t\, dW_t
+\]</span> Also recall its Wasserstein gradient <span class="math display">\[
+    \pd t \rho_t = -\nabla \cdot (\rho v), \quad v(x) = -\dfrac{g_t^2}{2} \nabla \log \rho(x)
+\]</span> Here, <span class="math inline">\(g_t\)</span> is also known as <strong>the noise schedule</strong>. Denote the accumulated variance as <span class="math inline">\(\sigma^2_t\)</span>, then the marginal distribution is <span class="math display">\[
+    \rho(x_t\mid x_0) = \mathcal N(x_t; x_0, \sigma^2_tI), \quad \sigma^2_t = \int_0^t\, g_s^2\, ds
+\]</span> If <span class="math inline">\(p_t, q_t\)</span> are both subject to the VE process, substituting the dynamic de Bruijn identity yields</p>
+<p><span id="eq-heat-debruijn"></span> <span class="math display">\[
+\begin{equation}
+\begin{aligned}
+    D(p_0 \| q_0)
+    &amp;= D(p_T \| q_T) - \int_0^T \mathbb E_{p_t} \la \nabla \log p_t - \nabla \log q_t, \dot p_t - \dot q_t\ra\, dt \\
+    &amp;= D(p_T \| q_T) + \dfrac 1 2 \int_0^T g_t^2 \cdot \mathbb E_{x\sim p_t} \| \nabla \log p_t(x) - \nabla \log q_t(x) \|^2\, dt
+\end{aligned}
+\label{eq:heat-debruijn}
+\end{equation}
+\]</span> Sometimes this specialized result is known as the dynamic de Bruijn identity. :::</p>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>The equation <span class="math inline">\(\eqref{eq:heat-debruijn}\)</span> demonstrates a fundamental interpretation of the de Bruijn identity. Note the Euclidean score matching loss <span class="math inline">\(\|\nabla \log p_t - \nabla \log q_t\|\)</span>. This term is well-defined for all <span class="math inline">\(t&gt;0\)</span>. The divergence of disjoint support is hidden in the tail <span class="math inline">\(t\to 0\)</span>. We have expanded the KL divergence as score matching over a full noise spectrum.</p>
+</div>
+</section>
+<section id="variance-preserving-process" class="level4">
+<h4 class="anchored" data-anchor-id="variance-preserving-process">Variance-preserving process</h4>
+<p>:::definition<a href="#variance-preserving-process">variance-preserving process</a> The variance-preserving (VP) process is defined by the following SDE with noise schedule <span class="math inline">\(\beta_t\)</span>: <span class="math display">\[
+    dX_t = -\dfrac 1 2 \beta_t X_t\, dt + \sqrt{\beta_t}\, dW_t
+\]</span> By Fokker-Planck, the equivalent velocity field dictating Wasserstein gradient flow is <span class="math display">\[
+    v(x) = -\dfrac 1 2 \beta_t \left(x - \nabla \log \rho\right)
+\]</span> It’s related to the heat process up to a time-dependent rescaling of sample space scale. The conditional distribution is <span class="math display">\[
+    \rho(x_t \mid x_0) = \mathcal N\left(x_t; \sqrt{\alpha_t} x_0, (1-\alpha_t) I\right), \quad \alpha_t = e^{-\int_0^t \beta_s\, ds}
+\]</span> Substituting into the dynamic de Bruijn identity, the drift terms magically cancel and terminal divergence vanishes at <span class="math inline">\(t\to \infty\)</span>, yielding <span class="math display">\[
+    D(p_0 \| q_0) = \dfrac 1 2 \int_0^\infty \beta_t \cdot \mathbb E_{p_t} \| \nabla \log p_t - \nabla \log q_t \|^2\, dt
+\]</span> :::</p>
+<p>:::remark[interpretation as OU-process] The variance-preserving process is related to the Ornstein-Uhlenbeck process, which is the canonical continuous-time model for mean-reverting behavior given by <span class="math display">\[
+    dX_t = \theta(\mu - X_t)\, dt + \sigma\, dW_t, \quad \theta, \sigma&gt;0
+\]</span> Here <span class="math inline">\(\mu\)</span> is long-term mean, <span class="math inline">\(\theta\)</span> is restorative strength, and <span class="math inline">\(\sigma\)</span> volatility. :::</p>
+</section>
+</section>
+</section>
+<section id="tweedies-formula-and-flow-matching" class="level2">
+<h2 class="anchored" data-anchor-id="tweedies-formula-and-flow-matching">Tweedie’s formula and flow matching</h2>
+<p>Here, we clarify some of the most heavily overloaded deconcepts in flow matching / diffusion, prove that flow matching is MLE by Tweedie’s formula, and conclude with some possibly backfit first-principles analysis on why flow matching have come to dominate generative modeling. We’ll see that Tweedie’s formula is the engine behind high-dimensional scalability of flow matching models.</p>
+<section id="tweedies-formula" class="level3">
+<h3 class="anchored" data-anchor-id="tweedies-formula">Tweedie’s formula</h3>
+<p>Tweedie’s formula states that for processes with Gaussian noise, the true posterior mean (optimal denoiser) can be computed purely from <strong>the score of the marginal distribution</strong>.</p>
+<p>Application of this formula sheds light on the fundamental unification of ODE-style flow matching and SDE-style diffusion as maximum likelihood estimation via flow matching. It unifies the following objectives:</p>
+<ol type="1">
+<li>Predicting the score</li>
+<li>Predicting the posterior mean (denoising)</li>
+<li>Predicting the denoising vector field.</li>
+</ol>
+<p><span id="thm-tweedie"></span> :::theorem<a href="#tweedies-formula">Tweedie’s formula</a> Let <span class="math inline">\(z\sim P_z\)</span> be an unobserved true signal with an arbitrary prior, then <span class="math display">\[
+\begin{equation}
+    x\mid z\sim \mathcal N(\alpha z, \Sigma) \implies \alpha \mathbb E[z\mid x] = x + \Sigma \nabla \log \rho
+\label{eq:tweedie}
+\end{equation}
+\]</span> where <span class="math inline">\(\rho\)</span> is the marginal distribution of <span class="math inline">\(x\)</span> and <span class="math inline">\(\alpha\neq 0\)</span>. :::</p>
+<details>
+<summary>
+Proof sketch: substitute the Gaussian conditional score formula
+</summary>
+<p>Without loss of generality we can substitute <span class="math inline">\(z=\alpha z\)</span> so <span class="math inline">\(\alpha=1\)</span>. First compute the conditional distribution and score: <span class="math display">\[
+\begin{aligned}
+    p(x\mid z)
+    &amp;\propto \exp \left[-\dfrac 1 2 (x-z)^T \Sigma^{-1}(x-z)\right]  \\
+    \nabla p(x\mid z) &amp;= -p(x\mid z) \Sigma^{-1}(x-z)
+\end{aligned}
+\]</span> Substitute into the score: <span class="math display">\[
+\begin{aligned}
+    \nabla \log \rho(x)
+    &amp;= \df 1 {\rho(x)} \int \nabla p(x\mid z) p(z)\, dz \\
+    &amp;= - \df 1 {\rho(x)} \int \Sigma^{-1}(x-z) \cdot p(x\mid z) p(z)\, dz \\
+    &amp;= \int \Sigma^{-1}(z-x) p(z\mid x)\, dz \\
+    &amp;= \mathbb E_{z\mid x} \Sigma^{-1}(x - z) = \Sigma^{-1}\left(x - \mathbb E[z\mid x]\right)
+\end{aligned}
+\]</span></p>
+<p>Rearranging yields the result. <span class="math inline">\(\square\)</span></p>
+</details>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>This is a highly nontrivial theorem. In general, posterior quantities depend on the prior distribution of <span class="math inline">\(z\)</span>. Here, the key property <span class="math inline">\(\nabla_x p(x\mid z) = -p(x\mid z)\Sigma^{-1}(x-z)\)</span> provided the closed-form <span class="math inline">\(p(x\mid z)\)</span> which can be rearranged into <span class="math inline">\(p(z\mid x)\)</span>.</p>
+</div>
+<p>:::remark[application, <em>IMPORTANT</em>!] Flipping the theorem on its head, Tweedie reduces a <strong>density estimation</strong> problem <span class="math inline">\(\nabla \log \rho\)</span> into a <strong>mean-estimation</strong> problem <span class="math inline">\(\mathbb E[z\mid x]\)</span>. Suppose <span class="math inline">\(z\)</span> is an arbitrary distribution, we can apply <span class="math inline">\(\sigma\)</span> amount of noise and solve the mean-estimation problem to approximate <span class="math inline">\(\log \rho_z \approx \log \rho_x\)</span>; here <span class="math inline">\(\sigma\)</span> controls the bias-variance tradeoff. :::</p>
+<p>Next, let’s consider compact <span class="math inline">\(t\in [0, 1]\)</span> with <span class="math inline">\(t=0\)</span> being data / model boundary distribution, and <span class="math inline">\(t=1\)</span> being <span class="math inline">\(\mathcal N(0, I)\)</span>. Recall in <a href="../../blogs/machine-learning/ot-generative-1-wasserstein-geometry/#unifying-static-and-dynamical-perspectives">Part 1</a> that the Wasserstein-2 geodesic distance is realized by straight-line transport. Solving this ODE corresponds to flow matching, and we derive the de Bruijin MLE interpretation below:</p>
+</section>
+<section id="the-flow-matching-process" class="level3">
+<h3 class="anchored" data-anchor-id="the-flow-matching-process">The flow matching process</h3>
+<!-- Recall two critical results from Part 1:
+
+1. Given a transport plan (coupling) $\pi(x, y)$, the optimal-transport flow which realizes the plan realizes straight-line transport.
+2. The Wasserstein-2 distance is realized by the optimal transport plan. By Banamou-Brenier, the straight-line transports which realize the optimal transport plan never intersect. -->
+<p>We analyze the flow matching process by applying the following construction:</p>
+<ol type="1">
+<li>We <span class="question">define</span> an independent coupling between data and i.i.d. Gaussian noise.</li>
+<li>Given the independent coupling, we <span class="question">define</span> straight-line transport <span class="question">conditioned upon endpoints</span>. This supplies the trivial endpoints-conditioned vector field.</li>
+<li>Using 1-2 above, we can derive the <span class="question">data-conditioned</span> vector field <span class="math inline">\(v_t(x_t\mid x_0)\)</span>. This is a straight vector field.</li>
+<li>Using 3, we derive the marginal vector field <span class="math inline">\(v_t(x_t)\)</span>. This <span class="question">is not a straight vector field</span>.</li>
+<li>Note that the <span class="question">noise-conditioned vector field</span> <span class="math inline">\(v_t(x_t\mid x_1)\)</span> is straight.</li>
+</ol>
+<p>It’s extremely important to differentiate between vector fields by what they’re conditioned on.</p>
+<p>:::definition[the flow matching ODE process] Fixing data (or model) distribution <span class="math inline">\(p_0\)</span> and stationary noise distribution <span class="math inline">\(p_1=\mathcal N(0, I)\)</span>, flow matching uses <strong>independent coupling</strong> between noise and data: <span class="math display">\[
+    \pi(x_0, x_1) = p_0(x_0) p_1(x_1)
+\]</span> Recalling our discussion of the optimal transport field from <a href="../../blogs/machine-learning/ot-generative-1-wasserstein-geometry/#from-particles-to-fluid">Part 1</a>, the OT process <strong>for the conditional coupling</strong> implements straight line transport between endpoints. The conditional density implements linear interpolation between data sample and Gaussian noise: <span class="math display">\[
+    \rho_t(x_t\mid x_0) = \mathcal N\left(x_t; (1-t) x_0, t^2I\right)
+\]</span> :::</p>
+<p>The next step is deriving the conditional and marginal vector fields.</p>
+<p>Fixing both data <span class="math inline">\(x_0\)</span> and noise <span class="math inline">\(x_1\)</span>, the vector field <span class="math inline">\(v(x_t\mid x_0, x_1) = x_1 - x_0\)</span> on valid interpolation <span class="math inline">\(x_t = \bar t x_0 + tx_1\)</span> <a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>.</p>
+<p>:::proposition[data-conditioned flow-matching vector field] Fixing data <span class="math inline">\(x_0\)</span>, the conditional vector field is straight-line: at <span class="math inline">\(x_t\)</span>, the trajectory endpoint is <span class="math inline">\(\mathbb E[x_1\mid x_t, x_0]\)</span>. The projected displacement, which gives velocity under straight-line transport, is the current displacement scaled by the time progress <span class="math inline">\(1/t\)</span>. <span class="math display">\[
+\begin{equation}
+\begin{aligned}
+    v_t(x_t\mid x_0)
+    &amp;= \dfrac 1 t (x_t - x_0)
+\end{aligned}
+\label{eq:data-conditional-fn}
+\end{equation}
+\]</span> ::: For general endpoints-conditioned transport to initial position conditioned transport, apply <span class="math display">\[
+    v_t(x_t\mid x_0) = \int v_t(x_t\mid x_0, x_1)\, d\rho(x_1\mid x_t, x_0)
+\]</span></p>
+<p>Let’s proceed to derive the marginal vector field. Recall the decomposition: <span class="math display">\[
+\begin{equation}
+    v_t(x_t) = \int v_t(x_t\mid x_0) \, d\rho(x_0\mid x_t)
+\label{eq:marginal-vec}
+\end{equation}
+\]</span> - LHS denotes the macroscopic fluid velocity at position <span class="math inline">\(x_t\)</span>, time <span class="math inline">\(t\)</span>. - Fluid at this space-time are composed of fluid initially starting across a range of initial positions <span class="math inline">\(x_0\)</span>, each with their own velocity. - The RHS denotes an ensemble of particle velocity <span class="math inline">\(v_t(x_t\mid x_0)\)</span> from initial positions <span class="math inline">\(x_0\)</span>, averaged by their constituent ratio <span class="math inline">\(\rho(x_0\mid x_t)\)</span>.</p>
+<p><span id="prp-fm"></span> :::proposition[flow matching formulas] Applying <span class="math inline">\(\eqref{eq:marginal-vec}\)</span> with <span class="math inline">\(\eqref{eq:data-conditional-fn}\)</span> yields <span class="math display">\[
+\begin{equation}
+\begin{aligned}
+    v_t(x_t)
+    &amp;= \int \dfrac 1 t (x_t - x_0)\, d\rho(x_0\mid x_t) = \dfrac 1 t \left(x_t - \mathbb E[x_0 \mid x_t]\right)
+\end{aligned}
+\label{eq:fm-marginal-tweedie}
+\end{equation}
+\]</span> This looks difficult, but luckily, the independent coupling + straight-line endpoint transport implies conditional Gaussian noise <span class="math inline">\(x_t\mid x_0 \sim \mathcal N(\bar t x_0, t^2 I)\)</span>. Applying Tweedie <span class="math inline">\(\eqref{eq:tweedie}\)</span> yields <span class="math display">\[
+    \mathbb E[x_0\mid x_t] = \dfrac{x_t + t^2 \nabla \log p_t(x_t)}{1-t}
+\]</span> Simplify to obtain <span class="math display">\[
+\begin{equation}
+    v_t(x_t) = -\left(
+        \dfrac{1}{1-t} x_t + \dfrac{t}{1-t} \nabla \log p_t(x_t)
+    \right)
+\label{eq:fm-marginal-velocity}
+\end{equation}
+\]</span> The drift terms cancel in <span class="math inline">\(v^p_t - v^q_t\)</span> and <span class="math inline">\(D(p_1 \| q_1)=0\)</span>, yielding the KL decomposition <span id="eq-fm-debruijn"></span> <span class="math display">\[
+\begin{equation}
+    D(p_0 \| q_0)
+    = \int_0^1 \dfrac{t}{1-t} \mathbb E_{p_t} \|\nabla \log p_t - \nabla \log q_t\|^2\, dt
+    \label{eq:fm-debruijn}
+\end{equation}
+\]</span> :::</p>
+<p>:::remark[estimate v. transport] Note that if <span class="math inline">\(x_0\sim p\)</span> are e.g.&nbsp;images, then <span class="math inline">\(x_0\)</span> are generally sharp images, while the estimates <span class="math inline">\(\hat x_0\)</span> are generally blurry means. In particular, <span class="math inline">\(\hat x_0(x_1\sim p_1)\)</span> is just the unconditional mean. :::</p>
+<p>:::remark[straight vector fields] Note that the <strong>data-conditioned</strong> vector field <span class="math inline">\(v_t(x_t\mid x_0)\)</span> is straight. Similarly, the <strong>noise-conditioned vector field</strong> <span class="math inline">\(v_t(x_t\mid x_1) = (x_1 - x_t) / \bar t\)</span> is also straight. However, the marginal vector field <span class="math inline">\(v_t(x_t)\)</span> is not straight. :::</p>
+<p>What happens when we depart from the KL-weighting? Below, we show that using non-<span class="math inline">\(t/\bar t\)</span> score weights produces a bulk-KL over intermediate marginals: :::proposition[non-MLE weightings produce bulk-KL] Consider <span class="math inline">\(p_t, q_t\)</span> evolving according to the independent-coupling process. Given weights <span class="math inline">\(a(t)\)</span>, define <span class="math display">\[
+    S_t := \mathbb E_{x\sim p_t}\| \nabla \log p_t(x) - \nabla \log q_t(x) \|^2, \quad w(t) := \dfrac{\bar t}{t} a(t)
+\]</span> The <span class="math inline">\(a(t)\)</span>-weighted score-difference integral can be written as <span class="math display">\[
+\begin{equation}
+    \int_0^1 a(t) S_t\, dt
+    =
+    - w(t) D(p_t \| q_t)\bigg|_0^1
+    +
+    \int_0^1 \dot w(t) D(p_t \| q_t)\, dt
+\label{eq:weighted-bulk-kl}
+\end{equation}
+\]</span> whenever the boundary term is well-defined. In particular, whenever the boundary term vanishes, score matching with weight <span class="math inline">\(a(t)\)</span> is equivalent to minimizing the bulk-KL <span class="math display">\[
+    \int_0^1 \dot w(t)\, D(p_t \| q_t)\, dt
+\]</span> The maximum-likelihood choice <span class="math inline">\(a(t)=t/(1-t)\)</span> is exceptional: then <span class="math inline">\(w(t)\equiv 1\)</span>, so the integral collapses to the endpoint term <span class="math inline">\(D(p_0 \| q_0)\)</span>. :::</p>
+<details>
+<summary>
+Proof
+</summary>
+From <span class="math inline">\(\eqref{eq:fm-debruijn}\)</span>, differentiate both sides w.r.t. <span class="math inline">\(t\)</span> and rearrange: <span class="math display">\[
+    D(p_t \| q_t) = \int_t^1 \dfrac{\tau}{1-\tau} S_\tau\, d\tau \implies S_t = -\dfrac{\bar t}{t} \dfrac{d}{dt} D(p_t \| q_t)
+\]</span> Substitute into the weighted score objective and use <span class="math inline">\(w(t)=\dfrac{\bar t}{t} a(t)\)</span>: <span class="math display">\[
+\begin{aligned}
+    \int_0^1 a(t) S_t\, dt
+    &amp;=
+    -\int_0^1 w(t)\, \dfrac{d}{dt} D(p_t \| q_t)\, dt
+\end{aligned}
+\]</span> Integrate by parts to obtain <span class="math inline">\(\eqref{eq:weighted-bulk-kl}\)</span>. <span class="math inline">\(\square\)</span>
+</details>
+<p>:::corollary[flow-matching / uniform-velocity weighting] A very common choice is uniform-in-time velocity matching, corresponding to <span class="math display">\[
+    a(t) = \dfrac{t^2}{(1-t)^2} \implies w(t) = \dfrac{\bar t}{t} a(t) \implies \dfrac{t}{1-t}, \qquad \dot w(t) = \dfrac{1}{(1-t)^2}
+\]</span> The equivalent bulk-KL weighting is <span class="math display">\[
+    \int_0^1 \mathbb E_{x\sim p_t}\| v_t - \hat v_t \|^2\, dt
+    = \int_0^1 a(t) \| \nabla p_t(x_t) - \widehat{ \nabla p_t(x_t)} \|^2\, dt
+    = \int_0^1 \dfrac{D(p_t \| q_t)}{(1-t)^2}\, dt
+\]</span> :::</p>
+</section>
+<section id="flow-matching-in-practice" class="level3">
+<h3 class="anchored" data-anchor-id="flow-matching-in-practice">Flow matching in practice</h3>
+<p>Let’s look at the <a href="#prp-fm">preceding proposition</a> operationally:</p>
+<ol type="1">
+<li>Straight-line ODE transport equation <span class="math inline">\(\eqref{eq:fm-marginal-velocity}\)</span> tells us that given the (noise) spectrum-indexed family of scores <span class="math inline">\(\nabla \log \rho_t\)</span>, we can integrate <span class="math inline">\(v_t(x_t)\)</span> from <span class="math inline">\(x_1\)</span> to <span class="math inline">\(x_0\)</span> to generate a sample.</li>
+<li>de Bruijn formula <span class="math inline">\(\eqref{eq:fm-debruijn}\)</span> tells us that minimizing score MSE yields maximum likelihood.</li>
+</ol>
+<p>If we’re happy generating samples by integrating a vector field, we only need to approximate the score <span class="math inline">\(\nabla \log p_t(x)\)</span>. This is a parameric density estimation problem. But the score target <span class="math inline">\(\nabla \log p_t\)</span> looks untractable.</p>
+<p>Our escape hatch is equation <span class="math inline">\(\eqref{eq:fm-marginal-tweedie}\)</span>. Reparameterize <span class="math inline">\(f_\theta(x, t) \approx \mathbb E_p[x_0\mid x_t]\)</span>, then the implied score of our generative model is <span class="math display">\[
+    \nabla \log q_t(x_t) = \dfrac 1 {t^2} \left[\bar t f_\theta(x_t) - x_t\right]
+\]</span> :::remark Note that <span class="math inline">\(q_t\)</span> is implicitly defined by the sampling process where we push <span class="math inline">\(x_1\sim \mathcal N(0, I)\)</span> backwards through the ODE <span class="math inline">\(\eqref{eq:fm-marginal-velocity}\)</span> with <span class="math inline">\(\nabla \log p_t(x_t) \mapsto f_\theta(x, t)\)</span>. ::: Rewriting <span class="math inline">\(\nabla \log p_t\)</span> using <span class="math inline">\(\mathbb E_p[x_0\mid x_t]\)</span> via Tweedie, and <span class="math inline">\(\nabla \log q_t\)</span> using the implicit parameterization above, the de Bruijn equation <span class="math inline">\(\eqref{eq:fm-debruijn}\)</span> yields <span class="math display">\[
+\begin{aligned}
+    D(p_0\| q_0)
+    &amp;= \int_0^1 \dfrac{t}{1-t} \cdot \left(\dfrac {\bar t} {t^2}\right)^2 \mathbb E_{x_t \sim p_t}\|\mathbb E_{x_0\sim p(x_0\mid x_t)}[x_0\mid x_t] - f_\theta(x_t, t) \|^2\, dt \\
+    &amp;= \mathbb E_{t\sim \mathrm{Unif}[0, 1]} \left[\dfrac {\bar t} {t^3} \mathbb E_{x_t} \| \mathbb E_{x_0}[x_0\mid x_t] - f_\theta(x_t, t) \|^2 \right]
+\end{aligned}
+\]</span> Note that sampling are all from the data <span class="math inline">\(p\)</span>-process. But mean estimation is very easy, applying MSE decomposition while fixing <span class="math inline">\(x_t\)</span>: <span class="math display">\[
+\begin{aligned}
+    \mathbb E_{x_0\sim p(\cdot \mid x_t)} \| f_\theta(x_t, t) - x_0 \|^2
+    &amp;= \mathbb E_{x_0} \| f_\theta(x_t, t) - \mathbb E[x_0\mid x_t] - (x_0 - \mathbb E[x_0\mid x_t]) \|^2 \\
+    &amp;= \mathbb E_{x_0} \| \mathbb E_{x_0}[x_0\mid x_t] - f_\theta(x_t, t) \|^2 + \mathrm{Var}[x_0 \mid x_t]
+\end{aligned}
+\]</span> The cross term vanishes; this is the law of total variance.</p>
+<div class="proof remark">
+<p><span class="proof-title"><em>Remark</em>. </span>This analysis shows that the irreducible noise at level <span class="math inline">\(t\)</span> is <span class="math inline">\(\mathrm{Var}[x_0\mid x_t]\)</span>.</p>
+</div>
+In practice practice, the literature has settled upon using function estimators to approximate the <strong>velocity field</strong> <span class="math inline">\(f_\theta(x_t, t) \approx v_t(x_t)\)</span>. Systematically, the three parameterizations are related by the identities $$
+<span class="math display">\[\begin{alignedat}{2}
+\nabla \log p_t(x_t)
+&amp;= \frac{\bar t\,\mathbb E[x_0\mid x_t] - x_t}{t^2}
+&amp;\qquad&amp;= -\frac{\bar t}{t}v_t(x_t) - \frac{x_t}{t} \\
+
+v_t(x_t)
+&amp;= \frac{1}{t}\bigl(x_t - \mathbb E[x_0\mid x_t]\bigr)
+&amp;\qquad&amp;= -\frac{1}{1-t}\bigl(x_t + t\,\nabla \log p_t(x_t)\bigr) \\
+
+\mathbb E[x_0\mid x_t]
+&amp;= x_t - t\,v_t(x_t)
+&amp;\qquad&amp;= \frac{x_t + t^2 \nabla \log p_t(x_t)}{1-t}
+\end{alignedat}\]</span>
+<p><span class="math display">\[
+Crucially, both the score and velocity are linear in the denoiser $\mathbb E[x_0\mid x_t]$, so the training protocol boils down to:
+\]</span> x_0p_0, N(0, I), t(0, 1) x_t = t x_0 + t $$ and regress one of the equivalent targets:</p>
+<ol type="1">
+<li><strong>Predict score.</strong> Using Tweedie, the conditional score target is <span class="math display">\[
+    \nabla \log p_t(x_t\mid x_0)
+    = \dfrac{\bar t x_0 - x_t}{t^2}
+    = -\dfrac{\epsilon}{t}
+\]</span> with objective <span class="math display">\[
+    \mathcal L_s(\theta)
+    = \mathbb E \left[\dfrac{t}{1 - t}\left\|\hat s_\theta(x_t, t) + \dfrac{\epsilon}{t}\right\|^2\right]
+\]</span></li>
+<li><strong>Predict velocity.</strong> Using <span class="math inline">\(\hat x_{0,\theta} = x_t - t\hat v_\theta\)</span>, the conditional straight-line velocity is <span class="math inline">\(\epsilon - x_0\)</span> with objective <span class="math display">\[
+    \mathcal L_v(\theta)
+    = \mathbb E\left[\dfrac{\bar t}{t}\left\|\hat v_\theta(x_t, t) - (\epsilon - x_0)\right\|^2\right]
+\]</span> This is the most popular parameterization. With <span class="math inline">\(\hat v_\theta\)</span> absorbing the <span class="math inline">\(x_0\)</span> term, this becomes a normalized-noise predictor.</li>
+<li><strong>Predict <span class="math inline">\(x_0\)</span> / denoise.</strong> Train <span class="math inline">\(\hat x_{0,\theta}(x_t, t)\)</span> against <span class="math inline">\(x_0\)</span> with the MLE weight <span class="math display">\[
+    \mathcal L_{x_0}(\theta)
+    = \mathbb E\left[\dfrac{\bar t}{t^3}\left\|\hat x_{0,\theta}(x_t, t) - x_0\right\|^2\right]
+\]</span></li>
+</ol>
+<p>These are the same objective written in different coordinates; only the deterministic <span class="math inline">\(t\)</span>-dependent scaling changes. The irreducible component of the estimation problem at each noise level under MLE weighting is <span class="math display">\[
+    \dfrac{\bar t}{t^3} \mathrm{Var}[x_0 \mid x_t]
+\]</span> Note that this is intrinsic to the data distribution.</p>
+
+
+</section>
+</section>
+
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>It doesn’t matter where <span class="math inline">\(v_t\)</span> is elsewhere because <span class="math inline">\(\rho(x_t\mid x_0, x_1)\)</span> does not have mass elsewhere.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
