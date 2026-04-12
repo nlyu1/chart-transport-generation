@@ -16,6 +16,8 @@ class RegularGridConfig(BaseConfig):
     num_points_per_axis: int
     quiver_stride: int
     model_quiver_stride: int
+    padding_fraction: float = 0.15
+    min_half_span: float = 1.0
 
     @model_validator(mode="after")
     def _validate_config(self) -> "RegularGridConfig":
@@ -29,7 +31,36 @@ class RegularGridConfig(BaseConfig):
             raise ValueError("quiver_stride must be positive")
         if self.model_quiver_stride <= 0:
             raise ValueError("model_quiver_stride must be positive")
+        if self.padding_fraction < 0.0:
+            raise ValueError("padding_fraction must be non-negative")
+        if self.min_half_span <= 0.0:
+            raise ValueError("min_half_span must be positive")
         return self
+
+
+def infer_square_axis_ranges(
+    *,
+    samples: Float[Tensor, "batch 2"],
+    padding_fraction: float,
+    min_half_span: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    min_xy = samples.min(dim=0).values
+    max_xy = samples.max(dim=0).values
+    center = 0.5 * (min_xy + max_xy)
+    half_span = 0.5 * (max_xy - min_xy).max()
+    padded_half_span = max(
+        min_half_span,
+        float(half_span.item()) * (1.0 + padding_fraction),
+    )
+    x_range = (
+        float(center[0].item()) - padded_half_span,
+        float(center[0].item()) + padded_half_span,
+    )
+    y_range = (
+        float(center[1].item()) - padded_half_span,
+        float(center[1].item()) + padded_half_span,
+    )
+    return x_range, y_range
 
 
 def make_regular_grid(
@@ -192,6 +223,7 @@ def make_drifting_figure(
 
 
 __all__ = [
+    "infer_square_axis_ranges",
     "RegularGridConfig",
     "make_drifting_figure",
     "make_regular_grid",

@@ -29,6 +29,3 @@ Prefer explicit failure over permissive branching or broad `try/except`. Prefer 
 
 ## Testing Guidelines
 This is a research repo, so snippet validation is the default. Use focused `uv run python -c ...` checks to validate imports, shapes, and control flow. If you add tests, place them in `tests/` and name files `test_<feature>.py`.
-
-## Commit & Pull Request Guidelines
-Recent commits use subjects like `updates`; do not copy that style. Use short imperative subjects that name the subsystem, for example `Refine chart transport scheduling`. PRs should explain the experiment or module touched, list validation commands, call out breaking config changes, and include plots or screenshots when monitoring output changes.

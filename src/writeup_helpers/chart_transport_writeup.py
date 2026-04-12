@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
+import queue
 import threading
 
 import plotly.graph_objects as go
@@ -23,7 +24,12 @@ from src.stochastic_chart_transport.study import (
 
 
 def resolve_device(*, device_name: str) -> torch.device:
-    if device_name.startswith("cuda") and torch.cuda.is_available():
+    if device_name.startswith("cuda"):
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                f"Requested device {device_name!r}, but CUDA is unavailable. "
+                "Set device_name='cpu' explicitly if CPU execution is intended."
+            )
         return torch.device(device_name)
     return torch.device("cpu")
 
@@ -40,38 +46,49 @@ def get_autocast_context(*, device: torch.device):
     return nullcontext()
 
 
-def _start_torch_save_thread(*, obj, path: Path) -> threading.Thread:
+def _save_torch_object(*, obj, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    thread = threading.Thread(
-        target=torch.save,
-        args=(obj, path),
-        daemon=False,
-    )
-    thread.start()
-    return thread
+    torch.save(obj, path)
 
 
 class AsyncArtifactWriter:
-    def __init__(self) -> None:
-        self._threads: list[threading.Thread] = []
+    def __init__(self, *, max_pending_jobs: int = 2) -> None:
+        self._jobs: queue.Queue[tuple[str, object, Path] | None] = queue.Queue(
+            maxsize=max_pending_jobs
+        )
+        self._worker = threading.Thread(target=self._run, daemon=False)
+        self._worker.start()
 
     def save_snapshot(self, *, snapshot: dict, path: Path) -> None:
-        self._threads.append(_start_torch_save_thread(obj=snapshot, path=path))
+        self._jobs.put(("torch_save", snapshot, path))
+
+    def save_torch_object(self, *, obj, path: Path) -> None:
+        self._jobs.put(("torch_save", obj, path))
 
     def save_figure(self, *, figure: go.Figure, path_root: Path) -> None:
-        path_root.parent.mkdir(parents=True, exist_ok=True)
-        thread = threading.Thread(
-            target=save_go,
-            args=(figure, path_root.parent, path_root.name),
-            daemon=False,
-        )
-        thread.start()
-        self._threads.append(thread)
+        self._jobs.put(("figure", figure, path_root))
+
+    def _run(self) -> None:
+        while True:
+            job = self._jobs.get()
+            if job is None:
+                self._jobs.task_done()
+                break
+            job_type, payload, path = job
+            try:
+                if job_type == "torch_save":
+                    _save_torch_object(obj=payload, path=path)
+                elif job_type == "figure":
+                    save_go(payload, path.parent, path.name)
+                else:
+                    raise ValueError(f"Unknown job_type: {job_type}")
+            finally:
+                self._jobs.task_done()
 
     def join(self) -> None:
-        for thread in self._threads:
-            thread.join()
-        self._threads.clear()
+        self._jobs.put(None)
+        self._jobs.join()
+        self._worker.join()
 
 
 class ChartTransportTrainingPhaseConfig(BaseConfig):
@@ -183,6 +200,20 @@ def _writeup_config_path(*, artifact_root: Path) -> Path:
 
 def _step_checkpoint_path(*, artifact_root: Path, step: int) -> Path:
     return _checkpoint_dir(artifact_root=artifact_root) / f"step_{step:06d}.pt"
+
+
+def _copy_state_dict_to_cpu(model: torch.nn.Module) -> dict[str, torch.Tensor]:
+    return {
+        key: value.detach().cpu().clone()
+        for key, value in model.state_dict().items()
+    }
+
+
+def _build_render_checkpoint(*, state, step: int) -> dict:
+    return {
+        "step": step,
+        "model_state_dict": _copy_state_dict_to_cpu(state.model),
+    }
 
 
 def _configure_scene(
@@ -323,13 +354,16 @@ def _make_progress_figure(
 def _save_checkpoint(
     *,
     state,
+    writer: AsyncArtifactWriter,
     artifact_root: Path,
     step: int,
     checkpoint_paths: list[Path],
 ) -> None:
     checkpoint_path = _step_checkpoint_path(artifact_root=artifact_root, step=step)
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(state, checkpoint_path)
+    writer.save_torch_object(
+        obj=_build_render_checkpoint(state=state, step=step),
+        path=checkpoint_path,
+    )
     checkpoint_paths.append(checkpoint_path)
 
 
@@ -370,7 +404,7 @@ def _load_monitor_bundle(*, artifact_root: Path) -> dict:
 def _load_checkpoint(*, artifact_root: Path, step: int, device: torch.device):
     return torch.load(
         _step_checkpoint_path(artifact_root=artifact_root, step=step),
-        map_location=device,
+        map_location="cpu",
         weights_only=False,
     )
 
@@ -512,6 +546,7 @@ def run_stochastic_writeup_training(
     artifact_root.mkdir(parents=True, exist_ok=True)
     torch.save(config, _writeup_config_path(artifact_root=artifact_root))
     device = resolve_device(device_name=config.device_name)
+    checkpoint_writer = AsyncArtifactWriter(max_pending_jobs=2)
     state = StochasticChartTransportStudyState.initialize(
         config=config.study,
         device=device,
@@ -527,6 +562,7 @@ def run_stochastic_writeup_training(
     checkpoint_paths: list[Path] = []
     _save_checkpoint(
         state=state,
+        writer=checkpoint_writer,
         artifact_root=artifact_root,
         step=0,
         checkpoint_paths=checkpoint_paths,
@@ -566,11 +602,13 @@ def run_stochastic_writeup_training(
         if step % config.integrated.checkpoint_every_n_steps == 0:
             _save_checkpoint(
                 state=state,
+                writer=checkpoint_writer,
                 artifact_root=artifact_root,
                 step=step,
                 checkpoint_paths=checkpoint_paths,
             )
 
+    checkpoint_writer.join()
     torch.save(history, _training_history_path(artifact_root=artifact_root))
     return ChartTransportTrainingResult(
         device=device,
@@ -589,6 +627,7 @@ def run_deterministic_writeup_training(
     artifact_root.mkdir(parents=True, exist_ok=True)
     torch.save(config, _writeup_config_path(artifact_root=artifact_root))
     device = resolve_device(device_name=config.device_name)
+    checkpoint_writer = AsyncArtifactWriter(max_pending_jobs=2)
     state = DeterministicChartTransportStudyState.initialize(
         config=config.study,
         device=device,
@@ -604,6 +643,7 @@ def run_deterministic_writeup_training(
     checkpoint_paths: list[Path] = []
     _save_checkpoint(
         state=state,
+        writer=checkpoint_writer,
         artifact_root=artifact_root,
         step=0,
         checkpoint_paths=checkpoint_paths,
@@ -643,11 +683,13 @@ def run_deterministic_writeup_training(
         if step % config.integrated.checkpoint_every_n_steps == 0:
             _save_checkpoint(
                 state=state,
+                writer=checkpoint_writer,
                 artifact_root=artifact_root,
                 step=step,
                 checkpoint_paths=checkpoint_paths,
             )
 
+    checkpoint_writer.join()
     torch.save(history, _training_history_path(artifact_root=artifact_root))
     return ChartTransportTrainingResult(
         device=device,
@@ -671,7 +713,12 @@ def render_stochastic_writeup_resources(
     snapshots = []
     individual_paths = []
     for step in tqdm(config.resources.checkpoint_selection.steps(), desc="stochastic render"):
-        state = _load_checkpoint(artifact_root=artifact_root, step=step, device=device)
+        checkpoint = _load_checkpoint(artifact_root=artifact_root, step=step, device=device)
+        state = StochasticChartTransportStudyState.initialize(
+            config=config.study,
+            device=device,
+        )
+        state.model.load_state_dict(checkpoint["model_state_dict"])
         snapshot = _snapshot_from_stochastic_state(
             state=state,
             monitor_bundle=monitor_bundle,
@@ -721,7 +768,12 @@ def render_deterministic_writeup_resources(
     snapshots = []
     individual_paths = []
     for step in tqdm(config.resources.checkpoint_selection.steps(), desc="deterministic render"):
-        state = _load_checkpoint(artifact_root=artifact_root, step=step, device=device)
+        checkpoint = _load_checkpoint(artifact_root=artifact_root, step=step, device=device)
+        state = DeterministicChartTransportStudyState.initialize(
+            config=config.study,
+            device=device,
+        )
+        state.model.load_state_dict(checkpoint["model_state_dict"])
         snapshot = _snapshot_from_deterministic_state(
             state=state,
             monitor_bundle=monitor_bundle,

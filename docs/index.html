@@ -51,13 +51,13 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#abstract" id="toc-abstract" class="nav-link active" data-scroll-target="#abstract">Abstract</a></li>
-  <li><a href="#motivation" id="toc-motivation" class="nav-link" data-scroll-target="#motivation">Motivation</a></li>
-  <li><a href="#method" id="toc-method" class="nav-link" data-scroll-target="#method">Method</a></li>
-  <li><a href="#theory" id="toc-theory" class="nav-link" data-scroll-target="#theory">Theory</a></li>
-  <li><a href="#implementation" id="toc-implementation" class="nav-link" data-scroll-target="#implementation">Implementation</a></li>
-  <li><a href="#experiments" id="toc-experiments" class="nav-link" data-scroll-target="#experiments">Experiments</a></li>
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
+  <li><a href="#drifting-problems" id="toc-drifting-problems" class="nav-link active" data-scroll-target="#drifting-problems">Drifting problems</a>
+  <ul class="collapse">
+  <li><a href="#mode-collapse" id="toc-mode-collapse" class="nav-link" data-scroll-target="#mode-collapse">Mode collapse</a></li>
+  </ul></li>
+  <li><a href="#deterministic-chart-transport" id="toc-deterministic-chart-transport" class="nav-link" data-scroll-target="#deterministic-chart-transport">Deterministic chart transport</a></li>
+  <li><a href="#challenge-space-filling-using-low-dimensional-manifolds" id="toc-challenge-space-filling-using-low-dimensional-manifolds" class="nav-link" data-scroll-target="#challenge-space-filling-using-low-dimensional-manifolds">Challenge: space-filling using low-dimensional manifolds</a></li>
+  <li><a href="#partial-solution-stochastic-chart-transport" id="toc-partial-solution-stochastic-chart-transport" class="nav-link" data-scroll-target="#partial-solution-stochastic-chart-transport">Partial solution: stochastic chart transport</a></li>
   </ul>
 </nav>
 </div>
@@ -96,39 +96,34 @@ ul.task-list li input[type="checkbox"] {
 
 <p>Summary of research progress in the last month. Tldr:</p>
 <ol type="1">
-<li>A simple toy model highlights drifting’s reverse-KL issue.</li>
-<li>Simple toy model shows that drifting scales badly with ambient dimension.</li>
-<li><strong>Deterministic chart transport</strong> addresses both problems.</li>
+<li>A 2D bimodal Gaussian toy model highlights drifting’s <strong>reverse-KL issue</strong>.</li>
+<li><strong>Deterministic chart transport</strong>.</li>
 <li>Challenge to <em>deterministic chart transport</em>: data lies on a low dimensional manifold.</li>
-<li>Stochastic chart transport and its challenges.</li>
+<li>Partial solution: stochastic chart transport, but still challenging.</li>
 </ol>
-<section id="abstract" class="level1">
-<h1>Abstract</h1>
-<p>Replace this with a short abstract.</p>
+<section id="drifting-problems" class="level1">
+<h1>Drifting problems</h1>
+<section id="mode-collapse" class="level2">
+<h2 class="anchored" data-anchor-id="mode-collapse">Mode collapse</h2>
+<p>Below, we apply MLP-drifting to two well-separated Gaussian modes when the model’s initial distribution does not overlap. We plotted:</p>
+<ol type="1">
+<li>Data samples</li>
+<li>Model samples</li>
+<li>Grid-sampled drifting field</li>
+</ol>
+<p>[Artifact]</p>
+<p>When data modes are well-separated (as they likely are in high-dimensional space), the reverse-KL drifting field fundamentally</p>
 </section>
-<section id="motivation" class="level1">
-<h1>Motivation</h1>
+</section>
+<section id="deterministic-chart-transport" class="level1">
+<h1>Deterministic chart transport</h1>
 <p>Replace this with the problem statement and motivation.</p>
 </section>
-<section id="method" class="level1">
-<h1>Method</h1>
-<p>Replace this with the method overview.</p>
+<section id="challenge-space-filling-using-low-dimensional-manifolds" class="level1">
+<h1>Challenge: space-filling using low-dimensional manifolds</h1>
 </section>
-<section id="theory" class="level1">
-<h1>Theory</h1>
-<p>Replace this with the key equations and claims.</p>
-</section>
-<section id="implementation" class="level1">
-<h1>Implementation</h1>
-<p>Replace this with the mapping to the codebase.</p>
-</section>
-<section id="experiments" class="level1">
-<h1>Experiments</h1>
-<p>Replace this with results, figures, and comparisons.</p>
-</section>
-<section id="references" class="level1">
-<h1>References</h1>
-<p>Replace this with citations or links.</p>
+<section id="partial-solution-stochastic-chart-transport" class="level1">
+<h1>Partial solution: stochastic chart transport</h1>
 </section>
 
 </main>

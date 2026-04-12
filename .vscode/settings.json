@@ -4,7 +4,7 @@
   "files.exclude": {
     "**/.data": true,
     "**/.DS_Store": true,
-    "**/.ignore": true,
+    // "**/.ignore": true,
     "**/.ipynb_checkpoints": true,
     "**/.playwright-cli": true,
     "**/.pytest_cache": true,

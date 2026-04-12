@@ -19,6 +19,9 @@ class DriftingModelConfig(BaseConfig):
     linear_weight_scale: float = 1.0
     zero_linear_bias: bool = False
     output_bias: Float[Tensor, "output_dim"] | None = None
+    input_skip_weight: Float[Tensor, "output_dim input_dim"] | None = None
+    input_skip_bias: Float[Tensor, "output_dim"] | None = None
+    residual_output_scale: float = 1.0
 
     @classmethod
     def initialize(
@@ -30,10 +33,25 @@ class DriftingModelConfig(BaseConfig):
         linear_weight_scale: float = 1.0,
         zero_linear_bias: bool = False,
         output_bias: list[float] | None = None,
+        input_skip_weight: list[list[float]] | None = None,
+        input_skip_bias: list[float] | None = None,
+        residual_output_scale: float = 1.0,
     ) -> Self:
         output_bias_tensor = None
         if output_bias is not None:
             output_bias_tensor = torch.tensor(output_bias, dtype=torch.float32)
+        input_skip_weight_tensor = None
+        if input_skip_weight is not None:
+            input_skip_weight_tensor = torch.tensor(
+                input_skip_weight,
+                dtype=torch.float32,
+            )
+        input_skip_bias_tensor = None
+        if input_skip_bias is not None:
+            input_skip_bias_tensor = torch.tensor(
+                input_skip_bias,
+                dtype=torch.float32,
+            )
         return cls(
             generator=generator,
             lr=lr,
@@ -41,6 +59,9 @@ class DriftingModelConfig(BaseConfig):
             linear_weight_scale=linear_weight_scale,
             zero_linear_bias=zero_linear_bias,
             output_bias=output_bias_tensor,
+            input_skip_weight=input_skip_weight_tensor,
+            input_skip_bias=input_skip_bias_tensor,
+            residual_output_scale=residual_output_scale,
         )
 
     @model_validator(mode="after")
@@ -51,14 +72,37 @@ class DriftingModelConfig(BaseConfig):
             raise ValueError("grad_clip_norm must be positive")
         if self.linear_weight_scale <= 0.0:
             raise ValueError("linear_weight_scale must be positive")
+        if self.residual_output_scale <= 0.0:
+            raise ValueError("residual_output_scale must be positive")
         if self.output_bias is not None and self.output_bias.ndim != 1:
             raise ValueError("output_bias must be rank-1")
+        if self.input_skip_weight is not None and self.input_skip_weight.ndim != 2:
+            raise ValueError("input_skip_weight must be rank-2")
+        if self.input_skip_bias is not None and self.input_skip_bias.ndim != 1:
+            raise ValueError("input_skip_bias must be rank-1")
+        if (self.input_skip_weight is None) != (self.input_skip_bias is None):
+            raise ValueError(
+                "input_skip_weight and input_skip_bias must be provided together"
+            )
+        if (
+            self.input_skip_weight is not None
+            and self.output_bias is not None
+            and self.input_skip_bias.shape != self.output_bias.shape
+        ):
+            raise ValueError("input_skip_bias and output_bias must share shape")
         return self
 
     def get_model(self) -> nn.Module:
-        model = self.generator.get_model()
-        self.initialize_parameters(model)
-        return model
+        residual_model = self.generator.get_model()
+        self.initialize_parameters(residual_model)
+        if self.input_skip_weight is None:
+            return residual_model
+        return AffineResidualGenerator(
+            residual_model=residual_model,
+            input_skip_weight=self.input_skip_weight,
+            input_skip_bias=self.input_skip_bias,
+            residual_output_scale=self.residual_output_scale,
+        )
 
     def initialize_parameters(
         self,
@@ -94,6 +138,36 @@ class DriftingModelConfig(BaseConfig):
         model: nn.Module,
     ) -> torch.optim.Optimizer:
         return torch.optim.Adam(model.parameters(), lr=self.lr)
+
+
+class AffineResidualGenerator(nn.Module):
+    def __init__(
+        self,
+        *,
+        residual_model: nn.Module,
+        input_skip_weight: Float[Tensor, "output_dim input_dim"],
+        input_skip_bias: Float[Tensor, "output_dim"],
+        residual_output_scale: float,
+    ) -> None:
+        super().__init__()
+        self.residual_model = residual_model
+        self.input_skip = nn.Linear(
+            input_skip_weight.shape[1],
+            input_skip_weight.shape[0],
+            bias=True,
+        )
+        self.residual_output_scale = residual_output_scale
+        with torch.no_grad():
+            self.input_skip.weight.copy_(input_skip_weight)
+            self.input_skip.bias.copy_(input_skip_bias)
+
+    def forward(
+        self,
+        latent: Float[Tensor, "batch input_dim"],
+    ) -> Float[Tensor, "batch output_dim"]:
+        return self.input_skip(latent) + self.residual_output_scale * self.residual_model(
+            latent
+        )
 
 
 __all__ = ["DriftingModelConfig"]

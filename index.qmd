@@ -7,36 +7,31 @@ title-block-banner: false
 
 Summary of research progress in the last month. Tldr:
 
-1. A simple toy model highlights drifting's reverse-KL issue.
-2. Simple toy model shows that drifting scales badly with ambient dimension.
-3. **Deterministic chart transport** addresses both problems.
-4. Challenge to *deterministic chart transport*: data lies on a low dimensional manifold.
-5. Stochastic chart transport and its challenges.
+1. A 2D bimodal Gaussian toy model highlights drifting's **reverse-KL issue**.
+2. **Deterministic chart transport**.
+3. Challenge to *deterministic chart transport*: data lies on a low dimensional manifold.
+4. Partial solution: stochastic chart transport, but still challenging.
 
-# Abstract
+# Drifting problems
 
-Replace this with a short abstract.
+## Mode collapse
 
-# Motivation
+Below, we apply MLP-drifting to two well-separated Gaussian modes when the
+model's initial distribution does not overlap. We plotted:
+
+1. Data samples
+2. Model samples
+3. Grid-sampled drifting field
+
+[Artifact]
+
+When data modes are well-separated (as they likely are in high-dimensional space),
+the reverse-KL drifting field fundamentally
+
+# Deterministic chart transport
 
 Replace this with the problem statement and motivation.
 
-# Method
+# Challenge: space-filling using low-dimensional manifolds
 
-Replace this with the method overview.
-
-# Theory
-
-Replace this with the key equations and claims.
-
-# Implementation
-
-Replace this with the mapping to the codebase.
-
-# Experiments
-
-Replace this with results, figures, and comparisons.
-
-# References
-
-Replace this with citations or links.
+# Partial solution: stochastic chart transport
