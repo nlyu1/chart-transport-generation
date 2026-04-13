@@ -6,19 +6,21 @@ title-block-banner: false
 ---
 
 Summary of research progress in the last month.
-We isolated some drifting problems and experimented with
+We **isolated some drifting problems** and experimented with
 chart transport methods. Concludes with some
-preliminary MNIST experiments and takeaways.
+**preliminary MNIST experiments**.
 
 **The page might take a while to load**
 
-## Drifting mode collapse
+## Mode collapse in plain drifting
 
 We apply MLP-drifting to a **bimodal Gaussian in 2D** below.
 This demonstrates
 [mode collapse from disjoint initialization]{style="color: blue;"}.
 After converging to a mode, the model has almost no incentive to
 cover the other mode.
+
+**Drag to see different training steps**, same for later plots.
 
 <div style="text-align: center; height: 578px; overflow: hidden;">
 <iframe src="writeup/assets/drifting_revkl.html"
@@ -35,18 +37,9 @@ all suffer from this reverse-KL mode-collapse problem.
 The main idea of our proposal is to _build an autoencoder (chart)
 between the latent and model spaces_. This way, we can **drift the data latent** towards the
 model latent (prior) to optimize forward-KL.
-Sample space distributions match when:
 
-1. Latent-space distributions match.
-We supervise this using a latent-space score critic which provides the latent drift field.
-2. Sample-to-latent encoding is reconstructible.
-
-
-Mechanically, the <span style="color: rgb(14, 120, 56); font-weight: 600;">latent score field</span> (<span style="color: rgb(14, 120, 56);">green arrow</span> right) guides the model samples (<span style="color: rgb(208, 51, 58);">red</span> and <span style="color: rgb(30, 100, 200);">blue</span> right)
-towards the <span style="color: rgb(90, 90, 90); font-weight: 600;">model latent distribution</span> (<span style="color: rgb(90, 90, 90);">black</span> right).
-
-This induces the <span style="color: rgb(208, 51, 58); font-weight: 600;">data</span> (<span style="color: rgb(208, 51, 58);">red</span>) and <span style="color: rgb(17, 24, 39); font-weight: 600;">sample</span> (<span style="color: rgb(17, 24, 39);">black</span>)
-distributions (left) to match.
+Mechanically (right panel), the <span style="color: rgb(14, 120, 56); font-weight: 600;">latent score field</span> guides the model samples (<span style="color: rgb(208, 51, 58);">red</span> and <span style="color: rgb(30, 100, 200);">blue</span>)
+towards the <span style="color: rgb(90, 90, 90); font-weight: 600;">model latent distribution</span> (<span style="color: rgb(90, 90, 90);">black</span> right). This induces (left panel) the <span style="color: rgb(208, 51, 58); font-weight: 600;">data</span> and <span style="color: rgb(17, 24, 39); font-weight: 600;">sample</span> distributions to match.
 
 <style>
 .scaled-plotly-frame {
@@ -115,10 +108,8 @@ window.addEventListener("DOMContentLoaded", () => {
 </iframe>
 </div>
 
-For reference, we also ran a flow-matching baseline.
-
 <details>
-<summary><strong>Flow-matching bimodal baseline</strong></summary>
+<summary><strong>We also ran a flow-matching baseline (click to expand)</strong></summary>
 
 <div class="scaled-plotly-frame" data-width="720" data-source-width="1416" data-source-height="766">
 <iframe src="writeup/assets/flow_matching_bimodal.html"
@@ -139,17 +130,38 @@ we generate multimodal Gaussian data on a **2D manifold in 3D ambient space**.
 Bad things happen when we try to warp a thin, 2D data latent surface into
 a thick target latent distribution.
 
-Note how the chart (autoencoder) struggles to warp the 2D data latent
-into 3D latent target. In general, space-filling using low-dimensional objects
-invite ill-conditioning. This appears to be a fundamental challenge with our method.
+_Note how the chart (autoencoder) struggles to warp the 2D data latent into 3D latent target_. It is known that space-filling using low-dimensional objects cause ill-conditioning (Hilbert's thirteenth problem!). This appears to be a fundamental challenge.
+
+<div class="scaled-plotly-frame" data-width="720" data-source-width="900" data-source-height="550">
+<iframe src="writeup/assets/deterministic_chart_transport_3d_4mode.html"
+        width="900" height="650"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+Note how the data latents (right) are thin surfaces that can't warp into the target Gaussian-shaped prior.
+The <span style="color: rgb(255, 127, 14); font-weight: 600;">generated samples</span> (can toggle off in the plot) pass through data samples (zoom in to see) but also generate off-manifold samples.
 
 ### Partial solution: stochastic encoding
 
-To address the problem above, we tried using a **stochastic encoder**.
+To address manifold dimension problem, we tried using a **stochastic encoder**.
 Each data sample maps to a "fiber" in latent space.
 We still match sample-space distributions when
 the marginal latent-fiber distribution match, and
-**distinct fibers are reconstructible**.
+**distinct fibers are reconstructible**. The following example demonstrates how this ~solves the 2D-data in 3D ambient setup.
+
+<div class="scaled-plotly-frame" data-width="720" data-source-width="900" data-source-height="550">
+<iframe src="writeup/assets/stochastic_chart_transport_3d_4mode.html"
+        width="900" height="550"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+Note how the latents (right) now become thick 3D blobs which can radially fill the space.
+
+Stochastic encoding **is not free** (needs to train a latent score critic), and we find it more a band-aid than a fix. We have some hypothesis for why it's not the full solution, but it is slightly too involved to explain here.
 
 ## MNIST experiments
 
@@ -167,15 +179,17 @@ Flow matching with the same MLP architecture, 50 Euler steps.
 
 </details>
 
+Real-world data likely lies on a **manifold with some noise**; their "manifold dimension" is, in general, dependent upon a pre-chosen noise level.
 
-Real-world data likely lies on a manifold with some noise.
-Still, generation quality is still latent-dimension dependent.
+Still, generation quality is pretty latent-dimension dependent.
 Stochastic encoding mitigates the failure mode (see below),
 but generated samples are still the best when the latent dimension
 matches the intrinsic data manifold dimension, and when decoding
 is deterministic.
 
 ### 12-dimensional latent
+
+Best sample quality. This is known to be around the intrinsic dimension of the MNIST data (I think CIFAR / Imagenet's in the 20-80 range, respectively).
 
 #### Deterministic encoding
 
@@ -198,7 +212,9 @@ is deterministic.
 
 ### 32-dimensional latent
 
-#### Deterministic
+Sample qualities are visibly worse than the 12D case.
+
+#### Deterministic encoding
 
 <div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
 <iframe src="writeup/assets/deterministic_chart_transport_mnist_d32.html"
@@ -208,7 +224,7 @@ is deterministic.
 </iframe>
 </div>
 
-#### Stochastic
+#### Stochastic encoding
 
 <div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
 <iframe src="writeup/assets/stochastic_chart_transport_mnist_d32.html"
@@ -218,9 +234,11 @@ is deterministic.
 </iframe>
 </div>
 
-#### 128-dimensional latent
+### 128-dimensional latent
 
-#### Deterministic
+Both methods break down, with deterministic encoding having much worse failure modes.
+
+#### Deterministic encoding
 
 <div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
 <iframe src="writeup/assets/deterministic_chart_transport_mnist_d128.html"
@@ -230,7 +248,7 @@ is deterministic.
 </iframe>
 </div>
 
-#### Stochastic
+#### Stochastic encoding
 
 <div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
 <iframe src="writeup/assets/stochastic_chart_transport_mnist_d128.html"
