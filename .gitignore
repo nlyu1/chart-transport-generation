@@ -6,9 +6,15 @@ __pycache__/
 metastudies/
 artifacts/
 *artifacts/
-.omx/
-writeup/.quarto/
+**/.omx/
+.agents/
+.nojekyll
+**/.nojekyll
+**/.quarto/
 writeup/.sass-cache/
+**/*.quarto_ipynb
+writeup/code/
+CLAUDE.md
+AGENTS.md
 
 /.quarto/
-**/*.quarto_ipynb

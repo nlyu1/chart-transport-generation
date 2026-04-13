@@ -13,7 +13,11 @@
     "**/.uv-cache": true,
     "**/.venv": true,
     "**/__pycache__": true,
-    "**/*.egg-info": true
+    "**/*.egg-info": true,
+    "**/.agents": true,
+    "**/.nojekyll": true,
+    "**/.omx": true,
+    "**/.quarto": true
   },
   "search.exclude": {
     "**/.data": true,
@@ -26,7 +30,11 @@
     "**/.uv-cache": true,
     "**/.venv": true,
     "**/__pycache__": true,
-    "**/*.egg-info": true
+    "**/*.egg-info": true,
+    "**/.agents": true,
+    "**/.nojekyll": true,
+    "**/.omx": true,
+    "**/.quarto": true
   },
   "files.watcherExclude": {
     "**/.data/**": true,
@@ -37,6 +45,9 @@
     "**/.uv-cache/**": true,
     "**/.venv/**": true,
     "**/__pycache__/**": true,
-    "**/*.egg-info/**": true
+    "**/*.egg-info/**": true,
+    "**/.agents/**": true,
+    "**/.omx/**": true,
+    "**/.quarto/**": true
   }
 }

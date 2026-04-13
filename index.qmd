@@ -5,33 +5,237 @@ date: last-modified
 title-block-banner: false
 ---
 
-Summary of research progress in the last month. Tldr:
+Summary of research progress in the last month.
+We isolated some drifting problems and experimented with
+chart transport methods. Concludes with some
+preliminary MNIST experiments and takeaways.
 
-1. A 2D bimodal Gaussian toy model highlights drifting's **reverse-KL issue**.
-2. **Deterministic chart transport**.
-3. Challenge to *deterministic chart transport*: data lies on a low dimensional manifold.
-4. Partial solution: stochastic chart transport, but still challenging.
+**The page might take a while to load**
 
-# Drifting problems
+## Drifting mode collapse
 
-## Mode collapse
+We apply MLP-drifting to a **bimodal Gaussian in 2D** below.
+This demonstrates
+[mode collapse from disjoint initialization]{style="color: blue;"}.
+After converging to a mode, the model has almost no incentive to
+cover the other mode.
 
-Below, we apply MLP-drifting to two well-separated Gaussian modes when the
-model's initial distribution does not overlap. We plotted:
+<div style="text-align: center; height: 578px; overflow: hidden;">
+<iframe src="writeup/assets/drifting_revkl.html"
+        width="720" height="770"
+        style="border: none; transform: scale(0.75); transform-origin: top center;">
+</iframe>
+</div>
 
-1. Data samples
-2. Model samples
-3. Grid-sampled drifting field
+Generally, model-sample drifting without importance sampling
+all suffer from this reverse-KL mode-collapse problem.
 
-[Artifact]
+## Chart transport
 
-When data modes are well-separated (as they likely are in high-dimensional space),
-the reverse-KL drifting field fundamentally
+The main idea of our proposal is to _build an autoencoder (chart)
+between the latent and model spaces_. This way, we can **drift the data latent** towards the
+model latent (prior) to optimize forward-KL.
+Sample space distributions match when:
 
-# Deterministic chart transport
+1. Latent-space distributions match.
+We supervise this using a latent-space score critic which provides the latent drift field.
+2. Sample-to-latent encoding is reconstructible.
 
-Replace this with the problem statement and motivation.
 
-# Challenge: space-filling using low-dimensional manifolds
+Mechanically, the <span style="color: rgb(14, 120, 56); font-weight: 600;">latent score field</span> (<span style="color: rgb(14, 120, 56);">green arrow</span> right) guides the model samples (<span style="color: rgb(208, 51, 58);">red</span> and <span style="color: rgb(30, 100, 200);">blue</span> right)
+towards the <span style="color: rgb(90, 90, 90); font-weight: 600;">model latent distribution</span> (<span style="color: rgb(90, 90, 90);">black</span> right).
 
-# Partial solution: stochastic chart transport
+This induces the <span style="color: rgb(208, 51, 58); font-weight: 600;">data</span> (<span style="color: rgb(208, 51, 58);">red</span>) and <span style="color: rgb(17, 24, 39); font-weight: 600;">sample</span> (<span style="color: rgb(17, 24, 39);">black</span>)
+distributions (left) to match.
+
+<style>
+.scaled-plotly-frame {
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.scaled-plotly-frame > iframe {
+  display: block;
+  border: 0;
+  transform-origin: top left;
+}
+</style>
+
+<script>
+window.fitScaledIframeContainer = function(frame) {
+  const iframe = frame.querySelector("iframe");
+  const sourceWidth = Number(frame.dataset.sourceWidth);
+  const sourceHeight = Number(frame.dataset.sourceHeight);
+  const requestedWidth = Number(frame.dataset.width);
+
+  if (!iframe || !sourceWidth || !sourceHeight) {
+    return;
+  }
+
+  if (requestedWidth) {
+    frame.style.width = `${requestedWidth}px`;
+  }
+
+  const displayWidth = frame.clientWidth || Math.min(requestedWidth || sourceWidth, sourceWidth);
+  const scale = displayWidth / sourceWidth;
+
+  frame.style.height = `${Math.ceil(sourceHeight * scale)}px`;
+  iframe.style.width = `${sourceWidth}px`;
+  iframe.style.height = `${sourceHeight}px`;
+  iframe.style.transform = `scale(${scale})`;
+};
+
+window.addEventListener("DOMContentLoaded", () => {
+  const frames = document.querySelectorAll(".scaled-plotly-frame");
+  frames.forEach(window.fitScaledIframeContainer);
+
+  if ("ResizeObserver" in window) {
+    const observer = new ResizeObserver((entries) => {
+      entries.forEach((entry) => window.fitScaledIframeContainer(entry.target));
+    });
+    frames.forEach((frame) => observer.observe(frame));
+  } else {
+    window.addEventListener("resize", () => frames.forEach(window.fitScaledIframeContainer));
+  }
+
+  document.querySelectorAll("details").forEach((d) => {
+    d.addEventListener("toggle", () => {
+      d.querySelectorAll(".scaled-plotly-frame").forEach(window.fitScaledIframeContainer);
+    });
+  });
+});
+</script>
+
+<div class="scaled-plotly-frame" data-width="720" data-source-width="1416" data-source-height="766">
+<iframe src="writeup/assets/chart_transport_bimodal_fix.html"
+        width="1416" height="766"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+For reference, we also ran a flow-matching baseline.
+
+<details>
+<summary><strong>Flow-matching bimodal baseline</strong></summary>
+
+<div class="scaled-plotly-frame" data-width="720" data-source-width="1416" data-source-height="766">
+<iframe src="writeup/assets/flow_matching_bimodal.html"
+        width="1416" height="766"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+</details>
+
+## Chart transport challenge: space-filling
+
+We realized that latent distribution matching becomes fragile
+**when the data has low intrinsic dimension**. In the experiment below,
+we generate multimodal Gaussian data on a **2D manifold in 3D ambient space**.
+
+Bad things happen when we try to warp a thin, 2D data latent surface into
+a thick target latent distribution.
+
+Note how the chart (autoencoder) struggles to warp the 2D data latent
+into 3D latent target. In general, space-filling using low-dimensional objects
+invite ill-conditioning. This appears to be a fundamental challenge with our method.
+
+### Partial solution: stochastic encoding
+
+To address the problem above, we tried using a **stochastic encoder**.
+Each data sample maps to a "fiber" in latent space.
+We still match sample-space distributions when
+the marginal latent-fiber distribution match, and
+**distinct fibers are reconstructible**.
+
+## MNIST experiments
+
+<details>
+<summary><strong>Flow-matching MNIST baseline</strong></summary>
+
+Flow matching with the same MLP architecture, 50 Euler steps.
+
+<div style="text-align: center; height: 443px; overflow: hidden;">
+<iframe src="writeup/assets/flow_matching_mnist.html"
+        width="540" height="590"
+        style="border: none; transform: scale(0.75); transform-origin: top center;">
+</iframe>
+</div>
+
+</details>
+
+
+Real-world data likely lies on a manifold with some noise.
+Still, generation quality is still latent-dimension dependent.
+Stochastic encoding mitigates the failure mode (see below),
+but generated samples are still the best when the latent dimension
+matches the intrinsic data manifold dimension, and when decoding
+is deterministic.
+
+### 12-dimensional latent
+
+#### Deterministic encoding
+
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d12.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+#### Stochastic encoding
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d12.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+### 32-dimensional latent
+
+#### Deterministic
+
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d32.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+#### Stochastic
+
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d32.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+#### 128-dimensional latent
+
+#### Deterministic
+
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d128.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+
+#### Stochastic
+
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d128.html"
+        width="520" height="570"
+        scrolling="no"
+        onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>

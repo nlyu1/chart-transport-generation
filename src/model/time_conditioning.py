@@ -62,7 +62,6 @@ class TimeConditioning(nn.Module):
                 out_features=config.condition_dim,
                 bias=True,
             ),
-            nn.SiLU(),
         )
 
     def forward(

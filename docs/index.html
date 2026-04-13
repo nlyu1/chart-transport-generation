@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Nicholas Lyu">
-<meta name="dcterms.date" content="2026-04-09">
+<meta name="dcterms.date" content="2026-04-12">
 
 <title>Drifting and Chart Transport</title>
 <style>
@@ -51,13 +51,17 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#drifting-problems" id="toc-drifting-problems" class="nav-link active" data-scroll-target="#drifting-problems">Drifting problems</a>
+  <li><a href="#drifting-mode-collapse" id="toc-drifting-mode-collapse" class="nav-link active" data-scroll-target="#drifting-mode-collapse">Drifting mode collapse</a></li>
+  <li><a href="#chart-transport" id="toc-chart-transport" class="nav-link" data-scroll-target="#chart-transport">Chart transport</a></li>
+  <li><a href="#chart-transport-challenge-space-filling" id="toc-chart-transport-challenge-space-filling" class="nav-link" data-scroll-target="#chart-transport-challenge-space-filling">Chart transport challenge: space-filling</a>
   <ul class="collapse">
-  <li><a href="#mode-collapse" id="toc-mode-collapse" class="nav-link" data-scroll-target="#mode-collapse">Mode collapse</a></li>
+  <li><a href="#partial-solution-stochastic-encoding" id="toc-partial-solution-stochastic-encoding" class="nav-link" data-scroll-target="#partial-solution-stochastic-encoding">Partial solution: stochastic encoding</a></li>
   </ul></li>
-  <li><a href="#deterministic-chart-transport" id="toc-deterministic-chart-transport" class="nav-link" data-scroll-target="#deterministic-chart-transport">Deterministic chart transport</a></li>
-  <li><a href="#challenge-space-filling-using-low-dimensional-manifolds" id="toc-challenge-space-filling-using-low-dimensional-manifolds" class="nav-link" data-scroll-target="#challenge-space-filling-using-low-dimensional-manifolds">Challenge: space-filling using low-dimensional manifolds</a></li>
-  <li><a href="#partial-solution-stochastic-chart-transport" id="toc-partial-solution-stochastic-chart-transport" class="nav-link" data-scroll-target="#partial-solution-stochastic-chart-transport">Partial solution: stochastic chart transport</a></li>
+  <li><a href="#mnist-experiments" id="toc-mnist-experiments" class="nav-link" data-scroll-target="#mnist-experiments">MNIST experiments</a>
+  <ul class="collapse">
+  <li><a href="#dimensional-latent" id="toc-dimensional-latent" class="nav-link" data-scroll-target="#dimensional-latent">12-dimensional latent</a></li>
+  <li><a href="#dimensional-latent-1" id="toc-dimensional-latent-1" class="nav-link" data-scroll-target="#dimensional-latent-1">32-dimensional latent</a></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -82,7 +86,7 @@ ul.task-list li input[type="checkbox"] {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">April 9, 2026</p>
+      <p class="date">April 12, 2026</p>
     </div>
   </div>
   
@@ -94,36 +98,172 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<p>Summary of research progress in the last month. Tldr:</p>
+<p>Summary of research progress in the last month. We isolated some drifting problems and experimented with chart transport methods. Concludes with some preliminary MNIST experiments and takeaways.</p>
+<p><strong>The page might take a while to load</strong></p>
+<section id="drifting-mode-collapse" class="level2">
+<h2 class="anchored" data-anchor-id="drifting-mode-collapse">Drifting mode collapse</h2>
+<p>We apply MLP-drifting to a <strong>bimodal Gaussian in 2D</strong> below. This demonstrates <span style="color: blue;">mode collapse from disjoint initialization</span>. After converging to a mode, the model has almost no incentive to cover the other mode.</p>
+<div style="text-align: center; height: 578px; overflow: hidden;">
+<iframe src="writeup/assets/drifting_revkl.html" width="720" height="770" style="border: none; transform: scale(0.75); transform-origin: top center;">
+</iframe>
+</div>
+<p>Generally, model-sample drifting without importance sampling all suffer from this reverse-KL mode-collapse problem.</p>
+</section>
+<section id="chart-transport" class="level2">
+<h2 class="anchored" data-anchor-id="chart-transport">Chart transport</h2>
+<p>The main idea of our proposal is to <em>build an autoencoder (chart) between the latent and model spaces</em>. This way, we can <strong>drift the data latent</strong> towards the model latent (prior) to optimize forward-KL. Sample space distributions match when:</p>
 <ol type="1">
-<li>A 2D bimodal Gaussian toy model highlights drifting’s <strong>reverse-KL issue</strong>.</li>
-<li><strong>Deterministic chart transport</strong>.</li>
-<li>Challenge to <em>deterministic chart transport</em>: data lies on a low dimensional manifold.</li>
-<li>Partial solution: stochastic chart transport, but still challenging.</li>
+<li>Latent-space distributions match. We supervise this using a latent-space score critic which provides the latent drift field.</li>
+<li>Sample-to-latent encoding is reconstructible.</li>
 </ol>
-<section id="drifting-problems" class="level1">
-<h1>Drifting problems</h1>
-<section id="mode-collapse" class="level2">
-<h2 class="anchored" data-anchor-id="mode-collapse">Mode collapse</h2>
-<p>Below, we apply MLP-drifting to two well-separated Gaussian modes when the model’s initial distribution does not overlap. We plotted:</p>
-<ol type="1">
-<li>Data samples</li>
-<li>Model samples</li>
-<li>Grid-sampled drifting field</li>
-</ol>
-<p>[Artifact]</p>
-<p>When data modes are well-separated (as they likely are in high-dimensional space), the reverse-KL drifting field fundamentally</p>
+<p>Mechanically, the <span style="color: rgb(14, 120, 56); font-weight: 600;">latent score field</span> (<span style="color: rgb(14, 120, 56);">green arrow</span> right) guides the model samples (<span style="color: rgb(208, 51, 58);">red</span> and <span style="color: rgb(30, 100, 200);">blue</span> right) towards the <span style="color: rgb(90, 90, 90); font-weight: 600;">model latent distribution</span> (<span style="color: rgb(90, 90, 90);">black</span> right).</p>
+<p>This induces the <span style="color: rgb(208, 51, 58); font-weight: 600;">data</span> (<span style="color: rgb(208, 51, 58);">red</span>) and <span style="color: rgb(17, 24, 39); font-weight: 600;">sample</span> (<span style="color: rgb(17, 24, 39);">black</span>) distributions (left) to match.</p>
+<style>
+.scaled-plotly-frame {
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.scaled-plotly-frame > iframe {
+  display: block;
+  border: 0;
+  transform-origin: top left;
+}
+</style>
+<script>
+window.fitScaledIframeContainer = function(frame) {
+  const iframe = frame.querySelector("iframe");
+  const sourceWidth = Number(frame.dataset.sourceWidth);
+  const sourceHeight = Number(frame.dataset.sourceHeight);
+  const requestedWidth = Number(frame.dataset.width);
+
+  if (!iframe || !sourceWidth || !sourceHeight) {
+    return;
+  }
+
+  if (requestedWidth) {
+    frame.style.width = `${requestedWidth}px`;
+  }
+
+  const displayWidth = frame.clientWidth || Math.min(requestedWidth || sourceWidth, sourceWidth);
+  const scale = displayWidth / sourceWidth;
+
+  frame.style.height = `${Math.ceil(sourceHeight * scale)}px`;
+  iframe.style.width = `${sourceWidth}px`;
+  iframe.style.height = `${sourceHeight}px`;
+  iframe.style.transform = `scale(${scale})`;
+};
+
+window.addEventListener("DOMContentLoaded", () => {
+  const frames = document.querySelectorAll(".scaled-plotly-frame");
+  frames.forEach(window.fitScaledIframeContainer);
+
+  if ("ResizeObserver" in window) {
+    const observer = new ResizeObserver((entries) => {
+      entries.forEach((entry) => window.fitScaledIframeContainer(entry.target));
+    });
+    frames.forEach((frame) => observer.observe(frame));
+  } else {
+    window.addEventListener("resize", () => frames.forEach(window.fitScaledIframeContainer));
+  }
+
+  document.querySelectorAll("details").forEach((d) => {
+    d.addEventListener("toggle", () => {
+      d.querySelectorAll(".scaled-plotly-frame").forEach(window.fitScaledIframeContainer);
+    });
+  });
+});
+</script>
+<div class="scaled-plotly-frame" data-width="720" data-source-width="1416" data-source-height="766">
+<iframe src="writeup/assets/chart_transport_bimodal_fix.html" width="1416" height="766" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+<p>For reference, we also ran a flow-matching baseline.</p>
+<details>
+<summary>
+<strong>Flow-matching bimodal baseline</strong>
+</summary>
+<div class="scaled-plotly-frame" data-width="720" data-source-width="1416" data-source-height="766">
+<iframe src="writeup/assets/flow_matching_bimodal.html" width="1416" height="766" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+</details>
+</section>
+<section id="chart-transport-challenge-space-filling" class="level2">
+<h2 class="anchored" data-anchor-id="chart-transport-challenge-space-filling">Chart transport challenge: space-filling</h2>
+<p>We realized that latent distribution matching becomes fragile <strong>when the data has low intrinsic dimension</strong>. In the experiment below, we generate multimodal Gaussian data on a <strong>2D manifold in 3D ambient space</strong>.</p>
+<p>Bad things happen when we try to warp a thin, 2D data latent surface into a thick target latent distribution.</p>
+<p>Note how the chart (autoencoder) struggles to warp the 2D data latent into 3D latent target. In general, space-filling using low-dimensional objects invite ill-conditioning. This appears to be a fundamental challenge with our method.</p>
+<section id="partial-solution-stochastic-encoding" class="level3">
+<h3 class="anchored" data-anchor-id="partial-solution-stochastic-encoding">Partial solution: stochastic encoding</h3>
+<p>To address the problem above, we tried using a <strong>stochastic encoder</strong>. Each data sample maps to a “fiber” in latent space. We still match sample-space distributions when the marginal latent-fiber distribution match, and <strong>distinct fibers are reconstructible</strong>.</p>
 </section>
 </section>
-<section id="deterministic-chart-transport" class="level1">
-<h1>Deterministic chart transport</h1>
-<p>Replace this with the problem statement and motivation.</p>
+<section id="mnist-experiments" class="level2">
+<h2 class="anchored" data-anchor-id="mnist-experiments">MNIST experiments</h2>
+<details>
+<summary>
+<strong>Flow-matching MNIST baseline</strong>
+</summary>
+<p>Flow matching with the same MLP architecture, 50 Euler steps.</p>
+<div style="text-align: center; height: 443px; overflow: hidden;">
+<iframe src="writeup/assets/flow_matching_mnist.html" width="540" height="590" style="border: none; transform: scale(0.75); transform-origin: top center;">
+</iframe>
+</div>
+</details>
+<p>Real-world data likely lies on a manifold with some noise. Still, generation quality is still latent-dimension dependent. Stochastic encoding mitigates the failure mode (see below), but generated samples are still the best when the latent dimension matches the intrinsic data manifold dimension, and when decoding is deterministic.</p>
+<section id="dimensional-latent" class="level3">
+<h3 class="anchored" data-anchor-id="dimensional-latent">12-dimensional latent</h3>
+<section id="deterministic-encoding" class="level4">
+<h4 class="anchored" data-anchor-id="deterministic-encoding">Deterministic encoding</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d12.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
 </section>
-<section id="challenge-space-filling-using-low-dimensional-manifolds" class="level1">
-<h1>Challenge: space-filling using low-dimensional manifolds</h1>
+<section id="stochastic-encoding" class="level4">
+<h4 class="anchored" data-anchor-id="stochastic-encoding">Stochastic encoding</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d12.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
 </section>
-<section id="partial-solution-stochastic-chart-transport" class="level1">
-<h1>Partial solution: stochastic chart transport</h1>
+</section>
+<section id="dimensional-latent-1" class="level3">
+<h3 class="anchored" data-anchor-id="dimensional-latent-1">32-dimensional latent</h3>
+<section id="deterministic" class="level4">
+<h4 class="anchored" data-anchor-id="deterministic">Deterministic</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d32.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+</section>
+<section id="stochastic" class="level4">
+<h4 class="anchored" data-anchor-id="stochastic">Stochastic</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d32.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+</section>
+<section id="dimensional-latent-2" class="level4">
+<h4 class="anchored" data-anchor-id="dimensional-latent-2">128-dimensional latent</h4>
+</section>
+<section id="deterministic-1" class="level4">
+<h4 class="anchored" data-anchor-id="deterministic-1">Deterministic</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/deterministic_chart_transport_mnist_d128.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+</section>
+<section id="stochastic-1" class="level4">
+<h4 class="anchored" data-anchor-id="stochastic-1">Stochastic</h4>
+<div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">
+<iframe src="writeup/assets/stochastic_chart_transport_mnist_d128.html" width="520" height="570" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
+</iframe>
+</div>
+</section>
+</section>
 </section>
 
 </main>
