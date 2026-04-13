@@ -113,7 +113,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="chart-transport" class="level2">
 <h2 class="anchored" data-anchor-id="chart-transport">Chart transport</h2>
-<p>The main idea of our proposal is to <em>build an autoencoder (chart) between the latent and model spaces</em>. This way, we can <strong>drift the data latent</strong> towards the model latent (prior) to optimize forward-KL.</p>
+<p>The main idea of our proposal is to <em>build an autoencoder (chart) between the latent and model spaces</em>. This way, we can <strong>drift the data latent</strong> towards the model latent (prior) to optimize forward-KL. We exemplify this method on the same problem above.</p>
 <p>Mechanically (right panel), the <span style="color: rgb(14, 120, 56); font-weight: 600;">latent score field</span> guides the model samples (<span style="color: rgb(208, 51, 58);">red</span> and <span style="color: rgb(30, 100, 200);">blue</span>) towards the <span style="color: rgb(90, 90, 90); font-weight: 600;">model latent distribution</span> (<span style="color: rgb(90, 90, 90);">black</span> right). This induces (left panel) the <span style="color: rgb(208, 51, 58); font-weight: 600;">data</span> and <span style="color: rgb(17, 24, 39); font-weight: 600;">sample</span> distributions to match.</p>
 <style>
 .scaled-plotly-frame {
