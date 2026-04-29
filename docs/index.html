@@ -195,7 +195,8 @@ window.addEventListener("DOMContentLoaded", () => {
 <iframe src="writeup/assets/deterministic_chart_transport_3d_4mode.html" width="900" height="650" scrolling="no" onload="window.fitScaledIframeContainer(this.parentElement);">
 </iframe>
 </div>
-<p>Note how the data latents (right) are thin surfaces that can’t warp into the target Gaussian-shaped prior. The <span style="color: rgb(255, 127, 14); font-weight: 600;">generated samples</span> (can toggle off in the plot) pass through data samples (zoom in to see) but also generate off-manifold samples.</p>
+<p>Note how the data latents (right) are thin surfaces that can’t warp into the target Gaussian-shaped prior. At the final step (~60k), the <span style="color: rgb(255, 127, 14); font-weight: 600;">generated samples</span> (can toggle off in the plot) pass through data samples (zoom in to see), but there are also plenty of off-manifold samples. This comes from the model’s inability to fully match the full-rank latent target (radial Gaussian, not shown in the right panel).</p>
+<p>The plots can be rotated / zoomed-in to show 3D perspective.</p>
 <section id="partial-solution-stochastic-encoding" class="level3">
 <h3 class="anchored" data-anchor-id="partial-solution-stochastic-encoding">Partial solution: stochastic encoding</h3>
 <p>To address manifold dimension problem, we tried using a <strong>stochastic encoder</strong>. Each data sample maps to a “fiber” in latent space. We still match sample-space distributions when the marginal latent-fiber distribution match, and <strong>distinct fibers are reconstructible</strong>. The following example demonstrates how this ~solves the 2D-data in 3D ambient setup.</p>
@@ -223,7 +224,7 @@ window.addEventListener("DOMContentLoaded", () => {
 <p>Still, generation quality is pretty latent-dimension dependent. Stochastic encoding mitigates the failure mode (see below), but generated samples are still the best when the latent dimension matches the intrinsic data manifold dimension, and when decoding is deterministic.</p>
 <section id="dimensional-latent" class="level3">
 <h3 class="anchored" data-anchor-id="dimensional-latent">12-dimensional latent</h3>
-<p>Best sample quality. This is known to be around the intrinsic dimension of the MNIST data (I think CIFAR / Imagenet’s in the 20-80 range, respectively).</p>
+<p>Best sample quality. The intrinsic dimension of the MNIST is known to be 10-16 (I think CIFAR / Imagenet are in the range of 20 and 70, respectively).</p>
 <section id="deterministic-encoding" class="level4">
 <h4 class="anchored" data-anchor-id="deterministic-encoding">Deterministic encoding</h4>
 <div class="scaled-plotly-frame" data-width="520" data-source-width="520" data-source-height="570">

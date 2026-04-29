@@ -141,7 +141,9 @@ _Note how the chart (autoencoder) struggles to warp the 2D data latent into 3D l
 </div>
 
 Note how the data latents (right) are thin surfaces that can't warp into the target Gaussian-shaped prior.
-The <span style="color: rgb(255, 127, 14); font-weight: 600;">generated samples</span> (can toggle off in the plot) pass through data samples (zoom in to see) but also generate off-manifold samples.
+At the final step (~60k), the <span style="color: rgb(255, 127, 14); font-weight: 600;">generated samples</span> (can toggle off in the plot) pass through data samples (zoom in to see), but there are also plenty of off-manifold samples. This comes from the model's inability to fully match the full-rank latent target (radial Gaussian, not shown in the right panel).
+
+The plots can be rotated / zoomed-in to show 3D perspective.
 
 ### Partial solution: stochastic encoding
 
@@ -189,7 +191,7 @@ is deterministic.
 
 ### 12-dimensional latent
 
-Best sample quality. This is known to be around the intrinsic dimension of the MNIST data (I think CIFAR / Imagenet's in the 20-80 range, respectively).
+Best sample quality. The intrinsic dimension of the MNIST is known to be 10-16 (I think CIFAR / Imagenet are in the range of 20 and 70, respectively).
 
 #### Deterministic encoding
 
