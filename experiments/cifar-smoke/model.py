@@ -49,18 +49,20 @@ class Encoder(nn.Module):
         self,
         *,
         in_channels=3,
-        stage_channels=(64, 128, 256, 512),
+        base_channels=64,
+        channel_multipliers=(1, 2, 4, 8),
         latent_channels=4,
         blocks_per_stage=2,
     ):
         super().__init__()
-        self.stem = nn.Conv2d(in_channels, stage_channels[0], 3, padding=1)
-        layers, prev_channels = [], stage_channels[0]
-        for i, channels in enumerate(stage_channels):
+        self.stem = nn.Conv2d(in_channels, base_channels, 3, padding=1)
+        layers, prev_channels = [], base_channels
+        for i, mult in enumerate(channel_multipliers):
+            channels = base_channels * mult
             for _ in range(blocks_per_stage):
                 layers.append(ResBlock(prev_channels, channels))
                 prev_channels = channels
-            if i < len(stage_channels) - 1:
+            if i < len(channel_multipliers) - 1:
                 layers.append(Downsample(prev_channels))
         self.body = nn.Sequential(*layers)
         self.head = nn.Sequential(
@@ -79,11 +81,13 @@ class Decoder(nn.Module):
         self,
         *,
         out_channels=3,
-        stage_channels=(64, 128, 256, 512),
+        base_channels=64,
+        channel_multipliers=(1, 2, 4, 8),
         latent_channels=4,
         blocks_per_stage=2,
     ):
         super().__init__()
+        stage_channels = [base_channels * m for m in channel_multipliers]
         prev_channels = stage_channels[-1]
         self.stem = nn.Conv2d(latent_channels, prev_channels, 3, padding=1)
         layers = []
@@ -108,18 +112,21 @@ class CifarVaeModel(nn.Module):
     def __init__(
         self,
         *,
-        stage_channels=(64, 128, 256, 512),
+        base_channels=64,
+        channel_multipliers=(1, 2, 4, 8),
         latent_channels=4,
         blocks_per_stage=2,
     ):
         super().__init__()
         self.encoder = Encoder(
-            stage_channels=stage_channels,
+            base_channels=base_channels,
+            channel_multipliers=channel_multipliers,
             latent_channels=latent_channels,
             blocks_per_stage=blocks_per_stage,
         )
         self.decoder = Decoder(
-            stage_channels=stage_channels,
+            base_channels=base_channels,
+            channel_multipliers=channel_multipliers,
             latent_channels=latent_channels,
             blocks_per_stage=blocks_per_stage,
         )
